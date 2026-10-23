@@ -107,6 +107,11 @@ class AxisConfig:
     tick_direction: str = "in"  # 'in', 'out', 'inout'
     tick_top: bool = False
     tick_right: bool = False
+
+    xtick_position: str = "bottom"  # 'bottom', 'top', 'both', 'none'
+    ytick_position: str = "left"    # 'left', 'right', 'both', 'none'
+    show_xticklabels: bool = True
+    show_yticklabels: bool = True
     
     show_legend: bool = True
     legend_loc: str = "best"  # 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'outside right'

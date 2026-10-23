@@ -343,8 +343,30 @@ def generate_python_code(
                 lines.append('ax.minorticks_on()')
                 lines.append(f'ax.grid(True, which="minor", linestyle=":", alpha={max(0.1, ax_cfg.grid_alpha/2):.2f})')
 
-            # Ticks direction
-            lines.append(f'ax.tick_params(direction="{ax_cfg.tick_direction}", top={ax_cfg.tick_top}, right={ax_cfg.tick_right})')
+            # Ticks direction & position
+            lines.append(f'ax.tick_params(direction="{ax_cfg.tick_direction}")')
+
+            x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+            show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
+            if x_pos == "none":
+                lines.append('ax.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False, labeltop=False)')
+            elif x_pos == "top":
+                lines.append(f'ax.tick_params(axis="x", which="both", bottom=False, top=True, labelbottom=False, labeltop={show_x_labels})')
+            elif x_pos == "both":
+                lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=True, labelbottom={show_x_labels}, labeltop=False)')
+            else:  # "bottom"
+                lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom={show_x_labels}, labeltop=False)')
+
+            y_pos = getattr(ax_cfg, "ytick_position", "left")
+            show_y_labels = getattr(ax_cfg, "show_yticklabels", True)
+            if y_pos == "none":
+                lines.append('ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=False, labelright=False)')
+            elif y_pos == "right":
+                lines.append(f'ax.tick_params(axis="y", which="both", left=False, right=True, labelleft=False, labelright={show_y_labels})')
+            elif y_pos == "both":
+                lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=True, labelleft={show_y_labels}, labelright=False)')
+            else:  # "left"
+                lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=False, labelleft={show_y_labels}, labelright=False)')
 
             # Legend
             if ax_cfg.show_legend:

@@ -485,10 +485,35 @@ class PlotCanvas(QWidget):
                     # 7. Ticks & Typography
                     ax.tick_params(
                         direction=ax_cfg.tick_direction,
-                        top=ax_cfg.tick_top,
-                        right=ax_cfg.tick_right,
                         labelsize=font_size
                     )
+
+                    # X-Ticks visibility and position
+                    x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+                    show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
+
+                    if x_pos == "none":
+                        ax.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False, labeltop=False)
+                    elif x_pos == "top":
+                        ax.tick_params(axis="x", which="both", bottom=False, top=True, labelbottom=False, labeltop=show_x_labels)
+                    elif x_pos == "both":
+                        ax.tick_params(axis="x", which="both", bottom=True, top=True, labelbottom=show_x_labels, labeltop=False)
+                    else:  # "bottom"
+                        ax.tick_params(axis="x", which="both", bottom=True, top=ax_cfg.tick_top, labelbottom=show_x_labels, labeltop=False)
+
+                    # Y-Ticks visibility and position
+                    y_pos = getattr(ax_cfg, "ytick_position", "left")
+                    show_y_labels = getattr(ax_cfg, "show_yticklabels", True)
+
+                    if y_pos == "none":
+                        ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=False, labelright=False)
+                    elif y_pos == "right":
+                        ax.tick_params(axis="y", which="both", left=False, right=True, labelleft=False, labelright=show_y_labels)
+                    elif y_pos == "both":
+                        ax.tick_params(axis="y", which="both", left=True, right=True, labelleft=show_y_labels, labelright=False)
+                    else:  # "left"
+                        ax.tick_params(axis="y", which="both", left=True, right=ax_cfg.tick_right, labelleft=show_y_labels, labelright=False)
+
                     if ax_twin:
                         ax_twin.tick_params(
                             direction=ax_cfg.tick_direction,

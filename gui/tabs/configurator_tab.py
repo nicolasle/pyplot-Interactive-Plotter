@@ -358,13 +358,36 @@ class ConfiguratorTab(QWidget):
         self.ax_tick_dir_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
         grid_layout.addWidget(self.ax_tick_dir_combo, 1, 3)
 
-        self.ax_tick_top_cb = QCheckBox("Top Ticks")
-        self.ax_tick_top_cb.stateChanged.connect(self._on_axes_prop_changed)
-        grid_layout.addWidget(self.ax_tick_top_cb, 2, 0)
+        # X-Ticks Position & Visibility
+        grid_layout.addWidget(QLabel("X-Ticks:"), 2, 0)
+        self.ax_xtick_pos_combo = QComboBox()
+        self.ax_xtick_pos_combo.addItem("Bottom (Default)", "bottom")
+        self.ax_xtick_pos_combo.addItem("Top", "top")
+        self.ax_xtick_pos_combo.addItem("Both (Top & Bottom)", "both")
+        self.ax_xtick_pos_combo.addItem("Hide X Ticks (None)", "none")
+        self.ax_xtick_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        grid_layout.addWidget(self.ax_xtick_pos_combo, 2, 1)
 
-        self.ax_tick_right_cb = QCheckBox("Right Ticks")
-        self.ax_tick_right_cb.stateChanged.connect(self._on_axes_prop_changed)
-        grid_layout.addWidget(self.ax_tick_right_cb, 2, 1)
+        self.ax_show_xticklabels_cb = QCheckBox("Show X Values/Numbers")
+        self.ax_show_xticklabels_cb.setChecked(True)
+        self.ax_show_xticklabels_cb.stateChanged.connect(self._on_axes_prop_changed)
+        grid_layout.addWidget(self.ax_show_xticklabels_cb, 2, 2, 1, 2)
+
+        # Y-Ticks Position & Visibility
+        grid_layout.addWidget(QLabel("Y-Ticks:"), 3, 0)
+        self.ax_ytick_pos_combo = QComboBox()
+        self.ax_ytick_pos_combo.addItem("Left (Default)", "left")
+        self.ax_ytick_pos_combo.addItem("Right", "right")
+        self.ax_ytick_pos_combo.addItem("Both (Left & Right)", "both")
+        self.ax_ytick_pos_combo.addItem("Hide Y Ticks (None)", "none")
+        self.ax_ytick_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        grid_layout.addWidget(self.ax_ytick_pos_combo, 3, 1)
+
+        self.ax_show_yticklabels_cb = QCheckBox("Show Y Values/Numbers")
+        self.ax_show_yticklabels_cb.setChecked(True)
+        self.ax_show_yticklabels_cb.stateChanged.connect(self._on_axes_prop_changed)
+        grid_layout.addWidget(self.ax_show_yticklabels_cb, 3, 2, 1, 2)
+
         axes_layout.addWidget(grid_box)
 
         # Legend Controls
@@ -632,8 +655,21 @@ class ConfiguratorTab(QWidget):
         if idx >= 0:
             self.ax_tick_dir_combo.setCurrentIndex(idx)
 
-        self.ax_tick_top_cb.setChecked(ax_cfg.tick_top)
-        self.ax_tick_right_cb.setChecked(ax_cfg.tick_right)
+        # X-Ticks
+        x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+        for i in range(self.ax_xtick_pos_combo.count()):
+            if self.ax_xtick_pos_combo.itemData(i) == x_pos:
+                self.ax_xtick_pos_combo.setCurrentIndex(i)
+                break
+        self.ax_show_xticklabels_cb.setChecked(getattr(ax_cfg, "show_xticklabels", True))
+
+        # Y-Ticks
+        y_pos = getattr(ax_cfg, "ytick_position", "left")
+        for i in range(self.ax_ytick_pos_combo.count()):
+            if self.ax_ytick_pos_combo.itemData(i) == y_pos:
+                self.ax_ytick_pos_combo.setCurrentIndex(i)
+                break
+        self.ax_show_yticklabels_cb.setChecked(getattr(ax_cfg, "show_yticklabels", True))
 
         self.ax_show_legend_cb.setChecked(ax_cfg.show_legend)
         self.ax_legend_frame_cb.setChecked(ax_cfg.legend_frame)
@@ -1003,8 +1039,12 @@ class ConfiguratorTab(QWidget):
         ax_cfg.grid_alpha = self.ax_grid_alpha_spin.value()
 
         ax_cfg.tick_direction = self.ax_tick_dir_combo.currentText()
-        ax_cfg.tick_top = self.ax_tick_top_cb.isChecked()
-        ax_cfg.tick_right = self.ax_tick_right_cb.isChecked()
+        ax_cfg.xtick_position = self.ax_xtick_pos_combo.currentData() or "bottom"
+        ax_cfg.show_xticklabels = self.ax_show_xticklabels_cb.isChecked()
+        ax_cfg.ytick_position = self.ax_ytick_pos_combo.currentData() or "left"
+        ax_cfg.show_yticklabels = self.ax_show_yticklabels_cb.isChecked()
+        ax_cfg.tick_top = ax_cfg.xtick_position in ("top", "both")
+        ax_cfg.tick_right = ax_cfg.ytick_position in ("right", "both")
 
         ax_cfg.show_legend = self.ax_show_legend_cb.isChecked()
         ax_cfg.legend_frame = self.ax_legend_frame_cb.isChecked()
