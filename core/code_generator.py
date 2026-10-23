@@ -395,10 +395,7 @@ def generate_python_code(
                     if custom_box is not None and custom_box > 0:
                         side_pt = float(custom_box)
                     else:
-                        if len(lbl) > 1:
-                            side_pt = round(max(lbl_size * (1.1 + 0.65 * len(lbl)), 18.0), 1)
-                        else:
-                            side_pt = round(max(lbl_size * 1.75, 18.0), 1)
+                        side_pt = round(lbl_size * 1.30, 1)
 
                     lines.append('# Panel label: rigorous square flush against the border')
                     lines.append(f'da = DrawingArea({side_pt}, {side_pt}, 0, 0)')

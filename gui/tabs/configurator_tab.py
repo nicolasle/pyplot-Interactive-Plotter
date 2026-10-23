@@ -454,15 +454,15 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_size_spin.setRange(5.0, 36.0)
         self.ax_panel_label_size_spin.setSingleStep(0.5)
         self.ax_panel_label_size_spin.setValue(11.0)
-        self.ax_panel_label_size_spin.valueChanged.connect(self._on_axes_prop_changed)
+        self.ax_panel_label_size_spin.valueChanged.connect(self._on_panel_font_size_changed)
         panel_layout.addWidget(self.ax_panel_label_size_spin, 2, 1)
 
         panel_layout.addWidget(QLabel("Square Side (pt):"), 2, 2)
         self.ax_panel_label_box_spin = QDoubleSpinBox()
-        self.ax_panel_label_box_spin.setRange(8.0, 72.0)
-        self.ax_panel_label_box_spin.setSingleStep(1.0)
-        self.ax_panel_label_box_spin.setValue(20.0)
-        self.ax_panel_label_box_spin.setToolTip("Exact square side length in points. Rigorously equal width and height, flush against the border.")
+        self.ax_panel_label_box_spin.setRange(5.0, 72.0)
+        self.ax_panel_label_box_spin.setSingleStep(0.5)
+        self.ax_panel_label_box_spin.setValue(14.3)
+        self.ax_panel_label_box_spin.setToolTip("Exact square side length in points. By default, 130% of font size.")
         self.ax_panel_label_box_spin.valueChanged.connect(self._on_axes_prop_changed)
         panel_layout.addWidget(self.ax_panel_label_box_spin, 2, 3)
 
@@ -753,7 +753,7 @@ class ConfiguratorTab(QWidget):
         lbl_size = ax_cfg.panel_label_size if ax_cfg.panel_label_size is not None else (self.fig_config.font_size + 1)
         self.ax_panel_label_size_spin.setValue(lbl_size)
 
-        box_size = ax_cfg.panel_label_box_size if ax_cfg.panel_label_box_size is not None else round(max(lbl_size * 1.75, 18.0), 1)
+        box_size = ax_cfg.panel_label_box_size if ax_cfg.panel_label_box_size is not None else round(lbl_size * 1.30, 1)
         self.ax_panel_label_box_spin.setValue(box_size)
 
         # Traces List
@@ -1078,6 +1078,13 @@ class ConfiguratorTab(QWidget):
             self.ref_list.item(curr_row).setText(text)
 
         self.config_changed.emit()
+
+    def _on_panel_font_size_changed(self, val: float):
+        if not self._block_signals:
+            self.ax_panel_label_box_spin.blockSignals(True)
+            self.ax_panel_label_box_spin.setValue(round(val * 1.30, 1))
+            self.ax_panel_label_box_spin.blockSignals(False)
+        self._on_axes_prop_changed()
 
     def _on_axes_prop_changed(self):
         if self._block_signals:
