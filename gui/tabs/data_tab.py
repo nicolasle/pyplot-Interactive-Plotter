@@ -359,6 +359,8 @@ class DataTab(QWidget):
                 tooltip = f"Column variable: '{col_str}'\nClick to insert into expression"
             else:
                 safe_alias = re.sub(r"\W+", "_", col_str).strip("_")
+                if safe_alias and safe_alias[0].isdigit():
+                    safe_alias = f"c_{safe_alias}"
                 pill_name = f"{safe_alias} ({col_str})"
                 insert_text = safe_alias
                 tooltip = f"Column alias: '{safe_alias}' (references '{col_str}')\nClick to insert into expression"
@@ -433,7 +435,12 @@ class DataTab(QWidget):
             return
         
         raw_col = self.rename_col_combo.currentText() or str(d.df.columns[-1])
-        col_var = raw_col if str(raw_col).isidentifier() else re.sub(r"\W+", "_", str(raw_col)).strip("_")
+        if str(raw_col).isidentifier():
+            col_var = raw_col
+        else:
+            col_var = re.sub(r"\W+", "_", str(raw_col)).strip("_")
+            if col_var and col_var[0].isdigit():
+                col_var = f"c_{col_var}"
         
         action = combo.itemData(idx)
         if action == "dedb_amp":
