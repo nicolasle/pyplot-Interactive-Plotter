@@ -118,7 +118,8 @@ class AxisConfig:
     panel_label: str = ""
     panel_label_loc: str = "top-left"   # 'top-left', 'top-right', 'bottom-left', 'bottom-right'
     panel_label_square: bool = True     # True: black square with white letter; False: plain black font
-    panel_label_size: Optional[float] = None
+    panel_label_size: Optional[float] = None        # Font size (pt)
+    panel_label_box_size: Optional[float] = None    # Square side length in pt (None = auto)
     
     show_legend: bool = True
     legend_loc: str = "best"  # 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'outside right'

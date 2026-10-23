@@ -432,7 +432,7 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_edit = QLineEdit()
         self.ax_panel_label_edit.setPlaceholderText("e.g. a, b, c...")
         self.ax_panel_label_edit.textChanged.connect(self._on_axes_prop_changed)
-        panel_layout.addWidget(self.ax_panel_label_edit, 0, 2)
+        panel_layout.addWidget(self.ax_panel_label_edit, 0, 2, 1, 2)
 
         panel_layout.addWidget(QLabel("Corner:"), 1, 0)
         self.ax_panel_label_pos_combo = QComboBox()
@@ -447,7 +447,7 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_square_cb.setChecked(True)
         self.ax_panel_label_square_cb.setToolTip("Checked: black square in corner with white letter.\nUnchecked: font in plain black without square.")
         self.ax_panel_label_square_cb.stateChanged.connect(self._on_axes_prop_changed)
-        panel_layout.addWidget(self.ax_panel_label_square_cb, 1, 2)
+        panel_layout.addWidget(self.ax_panel_label_square_cb, 1, 2, 1, 2)
 
         panel_layout.addWidget(QLabel("Font Size (pt):"), 2, 0)
         self.ax_panel_label_size_spin = QDoubleSpinBox()
@@ -456,6 +456,15 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_size_spin.setValue(11.0)
         self.ax_panel_label_size_spin.valueChanged.connect(self._on_axes_prop_changed)
         panel_layout.addWidget(self.ax_panel_label_size_spin, 2, 1)
+
+        panel_layout.addWidget(QLabel("Square Side (pt):"), 2, 2)
+        self.ax_panel_label_box_spin = QDoubleSpinBox()
+        self.ax_panel_label_box_spin.setRange(8.0, 72.0)
+        self.ax_panel_label_box_spin.setSingleStep(1.0)
+        self.ax_panel_label_box_spin.setValue(20.0)
+        self.ax_panel_label_box_spin.setToolTip("Exact square side length in points. Rigorously equal width and height, flush against the border.")
+        self.ax_panel_label_box_spin.valueChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_panel_label_box_spin, 2, 3)
 
         axes_layout.addWidget(panel_box)
 
@@ -737,6 +746,9 @@ class ConfiguratorTab(QWidget):
 
         lbl_size = ax_cfg.panel_label_size if ax_cfg.panel_label_size is not None else (self.fig_config.font_size + 1)
         self.ax_panel_label_size_spin.setValue(lbl_size)
+
+        box_size = ax_cfg.panel_label_box_size if ax_cfg.panel_label_box_size is not None else round(max(lbl_size * 1.75, 18.0), 1)
+        self.ax_panel_label_box_spin.setValue(box_size)
 
         # Traces List
         self._refresh_traces_list()
@@ -1115,6 +1127,7 @@ class ConfiguratorTab(QWidget):
         ax_cfg.panel_label_loc = self.ax_panel_label_pos_combo.currentData() or "top-left"
         ax_cfg.panel_label_square = self.ax_panel_label_square_cb.isChecked()
         ax_cfg.panel_label_size = self.ax_panel_label_size_spin.value()
+        ax_cfg.panel_label_box_size = self.ax_panel_label_box_spin.value()
 
         self.config_changed.emit()
 

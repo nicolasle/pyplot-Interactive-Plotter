@@ -27,6 +27,9 @@ def generate_python_code(
     lines.append('import matplotlib.pyplot as plt')
     lines.append('import numpy as np')
     lines.append('import pandas as pd')
+    lines.append('from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, TextArea')
+    lines.append('from matplotlib.patches import Rectangle')
+    lines.append('from matplotlib.text import Text')
     lines.append('')
     lines.append('# Helper functions for decibel operations')
     lines.append('def dedB(x, mode=20):')
@@ -379,34 +382,37 @@ def generate_python_code(
                 loc = getattr(ax_cfg, "panel_label_loc", "top-left")
                 use_sq = getattr(ax_cfg, "panel_label_square", True)
                 lbl_size = ax_cfg.panel_label_size if ax_cfg.panel_label_size is not None else (fig_config.font_size + 1)
+                loc_map = {
+                    "top-left": "upper left",
+                    "top-right": "upper right",
+                    "bottom-left": "lower left",
+                    "bottom-right": "lower right",
+                }
+                loc_str = loc_map.get(loc, "upper left")
 
                 if use_sq:
-                    coords = {
-                        "top-left": (0.0, 1.0, "top", "left"),
-                        "top-right": (1.0, 1.0, "top", "right"),
-                        "bottom-left": (0.0, 0.0, "bottom", "left"),
-                        "bottom-right": (1.0, 0.0, "bottom", "right"),
-                    }
-                    px, py, va, ha = coords.get(loc, (0.0, 1.0, "top", "left"))
-                    disp_lbl = f' {lbl} ' if len(lbl) == 1 else lbl
-                    lines.append(
-                        f'ax.text({px}, {py}, "{disp_lbl}", transform=ax.transAxes, '
-                        f'va="{va}", ha="{ha}", fontsize={lbl_size}, fontweight="bold", '
-                        f'color="white", bbox=dict(boxstyle="square,pad=0.25", facecolor="black", edgecolor="black", linewidth=0.5), zorder=100)'
-                    )
+                    custom_box = getattr(ax_cfg, "panel_label_box_size", None)
+                    if custom_box is not None and custom_box > 0:
+                        side_pt = float(custom_box)
+                    else:
+                        if len(lbl) > 1:
+                            side_pt = round(max(lbl_size * (1.1 + 0.65 * len(lbl)), 18.0), 1)
+                        else:
+                            side_pt = round(max(lbl_size * 1.75, 18.0), 1)
+
+                    lines.append('# Panel label: rigorous square flush against the border')
+                    lines.append(f'da = DrawingArea({side_pt}, {side_pt}, 0, 0)')
+                    lines.append(f'da.add_artist(Rectangle((0, 0), {side_pt}, {side_pt}, facecolor="black", edgecolor="black", linewidth=0))')
+                    lines.append(f'da.add_artist(Text({side_pt / 2.0}, {side_pt / 2.0}, "{lbl}", color="white", fontsize={lbl_size}, fontweight="bold", va="center", ha="center"))')
+                    lines.append(f'panel_box = AnchoredOffsetbox(loc="{loc_str}", pad=0.0, borderpad=0.0, child=da, frameon=False)')
+                    lines.append('panel_box.set_zorder(100)')
+                    lines.append('ax.add_artist(panel_box)')
                 else:
-                    coords_no_sq = {
-                        "top-left": (0.04, 0.94, "top", "left"),
-                        "top-right": (0.96, 0.94, "top", "right"),
-                        "bottom-left": (0.04, 0.06, "bottom", "left"),
-                        "bottom-right": (0.96, 0.06, "bottom", "right"),
-                    }
-                    px, py, va, ha = coords_no_sq.get(loc, (0.04, 0.94, "top", "left"))
-                    lines.append(
-                        f'ax.text({px}, {py}, "{lbl}", transform=ax.transAxes, '
-                        f'va="{va}", ha="{ha}", fontsize={lbl_size}, fontweight="bold", '
-                        f'color="black", zorder=100)'
-                    )
+                    lines.append('# Panel label: plain black font')
+                    lines.append(f'ta = TextArea("{lbl}", textprops=dict(color="black", fontweight="bold", fontsize={lbl_size}))')
+                    lines.append(f'panel_box = AnchoredOffsetbox(loc="{loc_str}", pad=0.0, borderpad=0.35, child=ta, frameon=False)')
+                    lines.append('panel_box.set_zorder(100)')
+                    lines.append('ax.add_artist(panel_box)')
 
             lines.append('')
 
