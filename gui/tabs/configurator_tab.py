@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QDoubleSpinBox, QSpinBox, QCheckBox, QColorDialog,
     QSplitter, QTabWidget, QScrollArea, QGridLayout, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor
 
 from core.models import FigureConfig, AxisConfig, TraceConfig, ReferenceLineConfig, Dataset
@@ -432,7 +432,7 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_edit = QLineEdit()
         self.ax_panel_label_edit.setPlaceholderText("e.g. a, b, c...")
         self.ax_panel_label_edit.textChanged.connect(self._on_axes_prop_changed)
-        panel_layout.addWidget(self.ax_panel_label_edit, 0, 2, 1, 2)
+        panel_layout.addWidget(self.ax_panel_label_edit, 0, 2, 1, 3)
 
         panel_layout.addWidget(QLabel("Corner:"), 1, 0)
         self.ax_panel_label_pos_combo = QComboBox()
@@ -447,7 +447,7 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_square_cb.setChecked(True)
         self.ax_panel_label_square_cb.setToolTip("Checked: black square in corner with white letter.\nUnchecked: font in plain black without square.")
         self.ax_panel_label_square_cb.stateChanged.connect(self._on_axes_prop_changed)
-        panel_layout.addWidget(self.ax_panel_label_square_cb, 1, 2, 1, 2)
+        panel_layout.addWidget(self.ax_panel_label_square_cb, 1, 2, 1, 3)
 
         panel_layout.addWidget(QLabel("Font Size (pt):"), 2, 0)
         self.ax_panel_label_size_spin = QDoubleSpinBox()
@@ -465,6 +465,12 @@ class ConfiguratorTab(QWidget):
         self.ax_panel_label_box_spin.setToolTip("Exact square side length in points. Rigorously equal width and height, flush against the border.")
         self.ax_panel_label_box_spin.valueChanged.connect(self._on_axes_prop_changed)
         panel_layout.addWidget(self.ax_panel_label_box_spin, 2, 3)
+
+        self.btn_apply_panel_sizes_all = QPushButton("Apply to All")
+        self.btn_apply_panel_sizes_all.setToolTip("Apply current Font Size and Square Size to all subplots in the figure.")
+        self.btn_apply_panel_sizes_all.setStyleSheet("padding: 3px 8px; font-weight: bold;")
+        self.btn_apply_panel_sizes_all.clicked.connect(self._on_apply_panel_sizes_all)
+        panel_layout.addWidget(self.btn_apply_panel_sizes_all, 2, 4)
 
         axes_layout.addWidget(panel_box)
 
@@ -1130,6 +1136,26 @@ class ConfiguratorTab(QWidget):
         ax_cfg.panel_label_box_size = self.ax_panel_label_box_spin.value()
 
         self.config_changed.emit()
+
+    def _on_apply_panel_sizes_all(self):
+        """Applies current Font Size, Square Side, and Black Square setting to all subplots."""
+        self._on_axes_prop_changed()
+        font_sz = self.ax_panel_label_size_spin.value()
+        box_sz = self.ax_panel_label_box_spin.value()
+        is_sq = self.ax_panel_label_square_cb.isChecked()
+
+        for r in range(self.fig_config.nrows):
+            for c in range(self.fig_config.ncols):
+                ax = self.fig_config.get_axis(r, c)
+                ax.panel_label_size = font_sz
+                ax.panel_label_box_size = box_sz
+                ax.panel_label_square = is_sq
+
+        self.config_changed.emit()
+
+        orig_text = self.btn_apply_panel_sizes_all.text()
+        self.btn_apply_panel_sizes_all.setText("Applied!")
+        QTimer.singleShot(1500, lambda: self.btn_apply_panel_sizes_all.setText(orig_text))
 
     def _add_1d_trace(self):
         ax_cfg = self.fig_config.get_axis(*self.current_coord)
