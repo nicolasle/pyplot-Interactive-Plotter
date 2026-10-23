@@ -18,6 +18,7 @@ from PySide6.QtGui import QFont
 
 from core.models import FigureConfig, Dataset
 from core.code_generator import generate_python_code, generate_jupyter_notebook
+from core.project_manager import save_project_to_file, load_project_from_file, PROJECT_FILE_FILTER
 
 
 class ExportTab(QWidget):
@@ -76,10 +77,12 @@ class ExportTab(QWidget):
         export_img_btn = QPushButton("Export Figure (PDF, SVG, PNG)...")
         export_img_btn.clicked.connect(self._export_figure_image)
 
-        save_session_btn = QPushButton("Save Project Session...")
+        save_session_btn = QPushButton("💾 Save Project State (.plotproj)...")
+        save_session_btn.setToolTip("Save complete workspace with all datasets, formulas, and plot configurations")
         save_session_btn.clicked.connect(self._save_session)
 
-        load_session_btn = QPushButton("Open Project Session...")
+        load_session_btn = QPushButton("📂 Open Project State (.plotproj)...")
+        load_session_btn.setToolTip("Open a saved project state file (.plotproj / .json)")
         load_session_btn.clicked.connect(self._load_session)
 
         export_btn_row.addWidget(export_img_btn)
@@ -184,65 +187,42 @@ class ExportTab(QWidget):
             QMessageBox.critical(self, "Export Error", f"Failed to export figure:\n{e}")
 
     def _save_session(self):
+        parent = self.window()
+        if hasattr(parent, "save_project_state"):
+            parent.save_project_state()
+            return
+
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Plotter Project Session", "project.plotproj", "Plotter Project (*.plotproj *.json)"
+            self, "Save Project State", "project.plotproj", PROJECT_FILE_FILTER
         )
         if not file_path:
             return
 
         try:
-            session_data = {
-                "figure_config": self.fig_config.to_dict(),
-                "datasets": {
-                    d_id: {
-                        "name": ds.name,
-                        "data_type": ds.data_type,
-                        "filepath": ds.filepath,
-                        "meta": ds.meta
-                    }
-                    for d_id, ds in self.datasets.items()
-                }
-            }
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(session_data, f, indent=2)
-            QMessageBox.information(self, "Session Saved", f"Project session saved to:\n{file_path}")
+            save_project_to_file(file_path, self.fig_config, self.datasets)
+            QMessageBox.information(self, "Project Saved", f"Project state saved to:\n{file_path}")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save session:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to save project:\n{e}")
 
     def _load_session(self):
+        parent = self.window()
+        if hasattr(parent, "open_project_state"):
+            parent.open_project_state()
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Plotter Project Session", "", "Plotter Project (*.plotproj *.json)"
+            self, "Open Project State", "", PROJECT_FILE_FILTER
         )
         if not file_path:
             return
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                session_data = json.load(f)
-
-            # Reconstruct figure config
-            fig_data = session_data.get("figure_config", {})
-            new_fig = FigureConfig.from_dict(fig_data)
-            
-            self.fig_config.nrows = new_fig.nrows
-            self.fig_config.ncols = new_fig.ncols
-            self.fig_config.width_cm = new_fig.width_cm
-            self.fig_config.height_cm = new_fig.height_cm
-            self.fig_config.dpi = new_fig.dpi
-            self.fig_config.preset_name = new_fig.preset_name
-            self.fig_config.sharex = new_fig.sharex
-            self.fig_config.sharey = new_fig.sharey
-            self.fig_config.style = new_fig.style
-            self.fig_config.font_family = new_fig.font_family
-            self.fig_config.font_size = new_fig.font_size
-            self.fig_config.usetex = new_fig.usetex
-            self.fig_config.tight_layout = new_fig.tight_layout
-            self.fig_config.figure_title = new_fig.figure_title
-            self.fig_config.axes = new_fig.axes
-            self.fig_config.ensure_axes_grid()
-
+            new_fig, new_datasets, _ = load_project_from_file(file_path)
+            self.datasets.clear()
+            self.datasets.update(new_datasets)
+            self.fig_config.__dict__.update(new_fig.__dict__)
             self.session_loaded.emit()
             self.refresh_code()
-            QMessageBox.information(self, "Session Loaded", "Project session successfully restored!")
+            QMessageBox.information(self, "Project Loaded", "Project state successfully restored!")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load session:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to load project:\n{e}")

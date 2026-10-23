@@ -244,4 +244,70 @@ QPlainTextEdit, QTextEdit {
     font-size: 12px;
     border-radius: 4px;
 }
+
+QMenuBar {
+    background-color: #1a1a20;
+    color: #e0e0e0;
+    border-bottom: 1px solid #2e2e38;
+    padding: 2px 4px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+QMenuBar::item:selected {
+    background-color: #2e303d;
+}
+
+QMenu {
+    background-color: #22222a;
+    color: #e0e0e0;
+    border: 1px solid #434656;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 24px;
+    border-radius: 3px;
+}
+
+QMenu::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #33333e;
+    margin: 4px 8px;
+}
+
+QToolBar {
+    background-color: #1c1c23;
+    border-bottom: 1px solid #2e2e3a;
+    spacing: 6px;
+    padding: 4px 8px;
+}
+
+QToolButton {
+    background-color: #282834;
+    color: #f3f4f6;
+    border: 1px solid #3e3e4e;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-weight: 500;
+}
+
+QToolButton:hover {
+    background-color: #3b3e4f;
+    border-color: #60a5fa;
+}
+
+QToolButton:pressed {
+    background-color: #252733;
+}
 """

@@ -7,6 +7,8 @@ Includes serialization (to_dict/from_dict) for project saving/loading.
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple, Optional, Any
 import uuid
+import io
+import os
 import pandas as pd
 import numpy as np
 
@@ -140,6 +142,7 @@ class AxisConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AxisConfig":
+        data = dict(data)
         traces_data = data.pop("traces", [])
         ref_lines_data = data.pop("ref_lines", [])
         axis = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
@@ -231,6 +234,7 @@ class FigureConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FigureConfig":
+        data = dict(data)
         axes_data = data.pop("axes", {})
         fig = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
         fig.axes = {}
@@ -272,3 +276,46 @@ class Dataset:
         elif self.data_type == "2d_matrix" and self.matrix is not None:
             return f"{self.matrix.shape[0]} × {self.matrix.shape[1]} grid"
         return "Empty"
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = {
+            "id": self.id,
+            "name": self.name,
+            "data_type": self.data_type,
+            "filepath": self.filepath,
+            "meta": self.meta,
+        }
+        if self.data_type == "1d_table" and self.df is not None and not self.df.empty:
+            d["df_json"] = self.df.to_json(orient="split", date_format="iso")
+        elif self.data_type == "2d_matrix" and self.matrix is not None:
+            d["matrix"] = self.matrix.tolist()
+        return d
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Dataset":
+        ds = cls(
+            name=data.get("name", "Dataset"),
+            data_type=data.get("data_type", "1d_table"),
+            filepath=data.get("filepath"),
+            meta=data.get("meta", {}),
+            dataset_id=data.get("id")
+        )
+        if "df_json" in data and data["df_json"]:
+            try:
+                ds.df = pd.read_json(io.StringIO(data["df_json"]), orient="split")
+            except Exception:
+                ds.df = pd.DataFrame()
+        elif "matrix" in data and data["matrix"] is not None:
+            try:
+                ds.matrix = np.array(data["matrix"], dtype=float)
+            except Exception:
+                ds.matrix = None
+        elif ds.filepath and os.path.exists(ds.filepath):
+            try:
+                from core.data_loader import load_scientific_data
+                loaded_ds = load_scientific_data(ds.filepath)
+                ds.df = loaded_ds.df
+                ds.matrix = loaded_ds.matrix
+            except Exception:
+                pass
+        return ds

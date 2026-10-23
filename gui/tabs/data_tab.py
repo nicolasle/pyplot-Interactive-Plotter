@@ -61,8 +61,13 @@ class DataTab(QWidget):
         remove_btn.setStyleSheet("color: #f87171;")
         remove_btn.clicked.connect(self._remove_selected_dataset)
 
+        save_btn = QPushButton("💾 Save Project State")
+        save_btn.setToolTip("Save complete project workspace including all imported data, calculated columns, and plots")
+        save_btn.clicked.connect(self._save_project_clicked)
+
         btn_row.addWidget(import_btn)
         btn_row.addWidget(remove_btn)
+        btn_row.addWidget(save_btn)
         btn_row.addStretch()
         top_layout.addLayout(btn_row)
 
@@ -168,6 +173,11 @@ class DataTab(QWidget):
 
         splitter.setSizes([120, 230, 160])
         main_layout.addWidget(splitter)
+
+    def _save_project_clicked(self):
+        parent = self.window()
+        if hasattr(parent, "save_project_state"):
+            parent.save_project_state()
 
     def _open_smart_importer(self):
         dialog = SmartImportDialog(parent=self)
