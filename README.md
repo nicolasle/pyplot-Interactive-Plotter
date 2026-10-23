@@ -2,6 +2,9 @@
 
 An interactive, multi-tab desktop application built with **PySide6** and **Matplotlib** for scientific data exploration, publication-quality figure design, and **100% standalone Python (`.py`) & Jupyter Notebook (`.ipynb`) code generation**.
 
+> [!WARNING]
+> **Disclaimer**: This project and its codebase were generated with the assistance of AI. It is provided "as is", without warranty of any kind, express or implied. Use at your own risk.
+
 ---
 
 ## Key Features
