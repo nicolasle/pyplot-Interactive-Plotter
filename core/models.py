@@ -112,6 +112,13 @@ class AxisConfig:
     ytick_position: str = "left"    # 'left', 'right', 'both', 'none'
     show_xticklabels: bool = True
     show_yticklabels: bool = True
+
+    # Panel Label (Publication Tag, e.g. a, b, c...)
+    show_panel_label: bool = False
+    panel_label: str = ""
+    panel_label_loc: str = "top-left"   # 'top-left', 'top-right', 'bottom-left', 'bottom-right'
+    panel_label_square: bool = True     # True: black square with white letter; False: plain black font
+    panel_label_size: Optional[float] = None
     
     show_legend: bool = True
     legend_loc: str = "best"  # 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'outside right'
@@ -163,12 +170,35 @@ class FigureConfig:
         self.ensure_axes_grid()
 
     def ensure_axes_grid(self):
-        """Make sure all (r, c) up to nrows, ncols exist."""
+        """Make sure all (r, c) up to nrows, ncols exist with default panel labels."""
         for r in range(self.nrows):
             for c in range(self.ncols):
                 key = (r, c)
+                idx = r * self.ncols + c
+                default_lbl = chr(ord('a') + idx) if idx < 26 else f"p{idx+1}"
                 if key not in self.axes:
-                    self.axes[key] = AxisConfig(row=r, col=c)
+                    self.axes[key] = AxisConfig(row=r, col=c, panel_label=default_lbl)
+                elif not getattr(self.axes[key], "panel_label", ""):
+                    self.axes[key].panel_label = default_lbl
+
+    def reset_default_panel_labels(self):
+        """Re-assigns a, b, c, d... to all subplots in current grid order."""
+        for r in range(self.nrows):
+            for c in range(self.ncols):
+                idx = r * self.ncols + c
+                self.get_axis(r, c).panel_label = chr(ord('a') + idx) if idx < 26 else f"p{idx+1}"
+
+    def set_all_panel_labels_visible(self, visible: bool):
+        """Batch toggle panel labels for all subplots."""
+        for r in range(self.nrows):
+            for c in range(self.ncols):
+                self.get_axis(r, c).show_panel_label = visible
+
+    def set_all_panel_labels_square(self, square: bool):
+        """Batch set black square background on all subplots."""
+        for r in range(self.nrows):
+            for c in range(self.ncols):
+                self.get_axis(r, c).panel_label_square = square
 
     def get_axis(self, r: int, c: int) -> AxisConfig:
         key = (r, c)

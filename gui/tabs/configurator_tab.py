@@ -419,6 +419,46 @@ class ConfiguratorTab(QWidget):
         legend_layout.addWidget(self.ax_legend_ncol_spin, 1, 3)
         axes_layout.addWidget(legend_box)
 
+        # Panel Label (Publication Tag, e.g. a, b, c...)
+        panel_box = QGroupBox("Panel Label (Publication Tag)")
+        panel_layout = QGridLayout(panel_box)
+        panel_layout.setSpacing(8)
+
+        self.ax_show_panel_label_cb = QCheckBox("Show Panel Label")
+        self.ax_show_panel_label_cb.stateChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_show_panel_label_cb, 0, 0)
+
+        panel_layout.addWidget(QLabel("Label Text:"), 0, 1)
+        self.ax_panel_label_edit = QLineEdit()
+        self.ax_panel_label_edit.setPlaceholderText("e.g. a, b, c...")
+        self.ax_panel_label_edit.textChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_panel_label_edit, 0, 2)
+
+        panel_layout.addWidget(QLabel("Corner:"), 1, 0)
+        self.ax_panel_label_pos_combo = QComboBox()
+        self.ax_panel_label_pos_combo.addItem("Top-Left", "top-left")
+        self.ax_panel_label_pos_combo.addItem("Top-Right", "top-right")
+        self.ax_panel_label_pos_combo.addItem("Bottom-Left", "bottom-left")
+        self.ax_panel_label_pos_combo.addItem("Bottom-Right", "bottom-right")
+        self.ax_panel_label_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_panel_label_pos_combo, 1, 1)
+
+        self.ax_panel_label_square_cb = QCheckBox("Black square (white text)")
+        self.ax_panel_label_square_cb.setChecked(True)
+        self.ax_panel_label_square_cb.setToolTip("Checked: black square in corner with white letter.\nUnchecked: font in plain black without square.")
+        self.ax_panel_label_square_cb.stateChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_panel_label_square_cb, 1, 2)
+
+        panel_layout.addWidget(QLabel("Font Size (pt):"), 2, 0)
+        self.ax_panel_label_size_spin = QDoubleSpinBox()
+        self.ax_panel_label_size_spin.setRange(5.0, 36.0)
+        self.ax_panel_label_size_spin.setSingleStep(0.5)
+        self.ax_panel_label_size_spin.setValue(11.0)
+        self.ax_panel_label_size_spin.valueChanged.connect(self._on_axes_prop_changed)
+        panel_layout.addWidget(self.ax_panel_label_size_spin, 2, 1)
+
+        axes_layout.addWidget(panel_box)
+
         axes_layout.addStretch()
         axes_scroll.setWidget(axes_container)
         self.sub_tabs.addTab(axes_scroll, "Axes & Scales")
@@ -679,6 +719,24 @@ class ConfiguratorTab(QWidget):
             self.ax_legend_loc_combo.setCurrentIndex(idx)
 
         self.ax_legend_ncol_spin.setValue(ax_cfg.legend_ncol)
+
+        # Panel Label
+        self.ax_show_panel_label_cb.setChecked(getattr(ax_cfg, "show_panel_label", False))
+        r, c = self.current_coord
+        idx = r * self.fig_config.ncols + c
+        default_lbl = chr(ord('a') + idx) if idx < 26 else f"p{idx+1}"
+        self.ax_panel_label_edit.setText(ax_cfg.panel_label if ax_cfg.panel_label else default_lbl)
+
+        loc = getattr(ax_cfg, "panel_label_loc", "top-left")
+        for i in range(self.ax_panel_label_pos_combo.count()):
+            if self.ax_panel_label_pos_combo.itemData(i) == loc:
+                self.ax_panel_label_pos_combo.setCurrentIndex(i)
+                break
+
+        self.ax_panel_label_square_cb.setChecked(getattr(ax_cfg, "panel_label_square", True))
+
+        lbl_size = ax_cfg.panel_label_size if ax_cfg.panel_label_size is not None else (self.fig_config.font_size + 1)
+        self.ax_panel_label_size_spin.setValue(lbl_size)
 
         # Traces List
         self._refresh_traces_list()
@@ -1050,6 +1108,13 @@ class ConfiguratorTab(QWidget):
         ax_cfg.legend_frame = self.ax_legend_frame_cb.isChecked()
         ax_cfg.legend_loc = self.ax_legend_loc_combo.currentText()
         ax_cfg.legend_ncol = self.ax_legend_ncol_spin.value()
+
+        # Panel Label
+        ax_cfg.show_panel_label = self.ax_show_panel_label_cb.isChecked()
+        ax_cfg.panel_label = self.ax_panel_label_edit.text()
+        ax_cfg.panel_label_loc = self.ax_panel_label_pos_combo.currentData() or "top-left"
+        ax_cfg.panel_label_square = self.ax_panel_label_square_cb.isChecked()
+        ax_cfg.panel_label_size = self.ax_panel_label_size_spin.value()
 
         self.config_changed.emit()
 

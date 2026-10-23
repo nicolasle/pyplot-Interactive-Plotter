@@ -373,6 +373,41 @@ def generate_python_code(
                 loc_arg = f'loc="{ax_cfg.legend_loc}"' if ax_cfg.legend_loc != "best" else 'loc="best"'
                 lines.append(f'ax.legend({loc_arg}, frameon={ax_cfg.legend_frame}, ncol={ax_cfg.legend_ncol})')
 
+            # Panel Label (Publication Tag, e.g. a, b, c...)
+            if getattr(ax_cfg, "show_panel_label", False) and ax_cfg.panel_label:
+                lbl = str(ax_cfg.panel_label).strip()
+                loc = getattr(ax_cfg, "panel_label_loc", "top-left")
+                use_sq = getattr(ax_cfg, "panel_label_square", True)
+                lbl_size = ax_cfg.panel_label_size if ax_cfg.panel_label_size is not None else (fig_config.font_size + 1)
+
+                if use_sq:
+                    coords = {
+                        "top-left": (0.0, 1.0, "top", "left"),
+                        "top-right": (1.0, 1.0, "top", "right"),
+                        "bottom-left": (0.0, 0.0, "bottom", "left"),
+                        "bottom-right": (1.0, 0.0, "bottom", "right"),
+                    }
+                    px, py, va, ha = coords.get(loc, (0.0, 1.0, "top", "left"))
+                    disp_lbl = f' {lbl} ' if len(lbl) == 1 else lbl
+                    lines.append(
+                        f'ax.text({px}, {py}, "{disp_lbl}", transform=ax.transAxes, '
+                        f'va="{va}", ha="{ha}", fontsize={lbl_size}, fontweight="bold", '
+                        f'color="white", bbox=dict(boxstyle="square,pad=0.25", facecolor="black", edgecolor="black", linewidth=0.5), zorder=100)'
+                    )
+                else:
+                    coords_no_sq = {
+                        "top-left": (0.04, 0.94, "top", "left"),
+                        "top-right": (0.96, 0.94, "top", "right"),
+                        "bottom-left": (0.04, 0.06, "bottom", "left"),
+                        "bottom-right": (0.96, 0.06, "bottom", "right"),
+                    }
+                    px, py, va, ha = coords_no_sq.get(loc, (0.04, 0.94, "top", "left"))
+                    lines.append(
+                        f'ax.text({px}, {py}, "{lbl}", transform=ax.transAxes, '
+                        f'va="{va}", ha="{ha}", fontsize={lbl_size}, fontweight="bold", '
+                        f'color="black", zorder=100)'
+                    )
+
             lines.append('')
 
     # Layout & Show/Save block

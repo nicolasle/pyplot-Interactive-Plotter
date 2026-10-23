@@ -9,7 +9,7 @@ from typing import Optional, Callable
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox,
     QDoubleSpinBox, QComboBox, QCheckBox, QGroupBox, QLineEdit,
-    QGridLayout, QScrollArea
+    QGridLayout, QScrollArea, QPushButton
 )
 from PySide6.QtCore import Signal
 
@@ -167,6 +167,33 @@ class PlotTab(QWidget):
         style_layout.addWidget(self.title_edit, 2, 1, 1, 3)
 
         layout.addWidget(style_box)
+
+        # 5. Publication Panel Labels Group
+        panel_box = QGroupBox("Subplot Panel Labels (a, b, c...)")
+        panel_layout = QGridLayout(panel_box)
+        panel_layout.setSpacing(8)
+
+        self.btn_enable_all_panels = QPushButton("Enable on All Subplots")
+        self.btn_enable_all_panels.setStyleSheet("font-weight: bold; padding: 5px;")
+        self.btn_enable_all_panels.clicked.connect(self._on_enable_all_panel_labels)
+        panel_layout.addWidget(self.btn_enable_all_panels, 0, 0)
+
+        self.btn_disable_all_panels = QPushButton("Disable All Labels")
+        self.btn_disable_all_panels.setStyleSheet("padding: 5px;")
+        self.btn_disable_all_panels.clicked.connect(self._on_disable_all_panel_labels)
+        panel_layout.addWidget(self.btn_disable_all_panels, 0, 1)
+
+        self.btn_reset_panel_letters = QPushButton("Reset to a, b, c... (Grid Order)")
+        self.btn_reset_panel_letters.setStyleSheet("padding: 5px;")
+        self.btn_reset_panel_letters.clicked.connect(self._on_reset_panel_letters)
+        panel_layout.addWidget(self.btn_reset_panel_letters, 1, 0)
+
+        self.batch_square_cb = QCheckBox("Black Square on All")
+        self.batch_square_cb.setChecked(True)
+        self.batch_square_cb.stateChanged.connect(self._on_batch_square_toggled)
+        panel_layout.addWidget(self.batch_square_cb, 1, 1)
+
+        layout.addWidget(panel_box)
         layout.addStretch()
 
         scroll.setWidget(container)
@@ -262,4 +289,20 @@ class PlotTab(QWidget):
         c.usetex = self.usetex_cb.isChecked()
         c.figure_title = self.title_edit.text()
 
+        self.config_changed.emit()
+
+    def _on_enable_all_panel_labels(self):
+        self.fig_config.set_all_panel_labels_visible(True)
+        self.config_changed.emit()
+
+    def _on_disable_all_panel_labels(self):
+        self.fig_config.set_all_panel_labels_visible(False)
+        self.config_changed.emit()
+
+    def _on_reset_panel_letters(self):
+        self.fig_config.reset_default_panel_labels()
+        self.config_changed.emit()
+
+    def _on_batch_square_toggled(self, state: int):
+        self.fig_config.set_all_panel_labels_square(self.batch_square_cb.isChecked())
         self.config_changed.emit()
