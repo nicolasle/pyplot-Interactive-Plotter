@@ -289,6 +289,14 @@ class ConfiguratorTab(QWidget):
         self.ax_y2scale_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_y2scale_combo, 1, 1)
 
+        scale_layout.addWidget(QLabel("Aspect Ratio:"), 1, 2)
+        self.ax_aspect_combo = QComboBox()
+        self.ax_aspect_combo.addItem("auto (Default)", "auto")
+        self.ax_aspect_combo.addItem("equal (1:1 Scaling)", "equal")
+        self.ax_aspect_combo.addItem("scaled (Equal & tight limits)", "scaled")
+        self.ax_aspect_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        scale_layout.addWidget(self.ax_aspect_combo, 1, 3)
+
         scale_layout.addWidget(QLabel("X-Min:"), 2, 0)
         self.ax_xmin_edit = QLineEdit()
         self.ax_xmin_edit.setPlaceholderText("Auto")
@@ -617,6 +625,20 @@ class ConfiguratorTab(QWidget):
         self.tr_levels_spin.valueChanged.connect(self._on_trace_prop_changed)
         grid.addWidget(self.tr_levels_spin, 10, 3)
 
+        grid.addWidget(QLabel("Aspect (imshow):"), 11, 0)
+        self.tr_aspect_combo = QComboBox()
+        self.tr_aspect_combo.addItem("equal (1:1 Square pixels)", "equal")
+        self.tr_aspect_combo.addItem("auto (Fill axes rectangle)", "auto")
+        self.tr_aspect_combo.addItem("scaled (Equal & tight limits)", "scaled")
+        self.tr_aspect_combo.currentIndexChanged.connect(self._on_trace_prop_changed)
+        grid.addWidget(self.tr_aspect_combo, 11, 1)
+
+        grid.addWidget(QLabel("Colorbar Label:"), 11, 2)
+        self.tr_cbar_label_edit = QLineEdit()
+        self.tr_cbar_label_edit.setPlaceholderText("Colorbar unit / title")
+        self.tr_cbar_label_edit.textChanged.connect(self._on_trace_prop_changed)
+        grid.addWidget(self.tr_cbar_label_edit, 11, 3)
+
         self.editor_layout.addLayout(grid)
         self.editor_layout.addStretch()
 
@@ -689,6 +711,10 @@ class ConfiguratorTab(QWidget):
         idx = self.ax_y2scale_combo.findText(ax_cfg.y2scale)
         if idx >= 0:
             self.ax_y2scale_combo.setCurrentIndex(idx)
+
+        idx = self.ax_aspect_combo.findData(getattr(ax_cfg, "aspect", "auto"))
+        if idx >= 0:
+            self.ax_aspect_combo.setCurrentIndex(idx)
 
         self.ax_xmin_edit.setText(str(ax_cfg.xlim_min) if ax_cfg.xlim_min is not None else "")
         self.ax_xmax_edit.setText(str(ax_cfg.xlim_max) if ax_cfg.xlim_max is not None else "")
@@ -902,6 +928,12 @@ class ConfiguratorTab(QWidget):
 
         self.tr_levels_spin.setValue(tr.contour_levels)
 
+        idx = self.tr_aspect_combo.findData(getattr(tr, "aspect", "equal"))
+        if idx >= 0:
+            self.tr_aspect_combo.setCurrentIndex(idx)
+
+        self.tr_cbar_label_edit.setText(getattr(tr, "colorbar_label", ""))
+
         self._block_signals = False
 
     def _populate_column_combos(self, dataset_id: str):
@@ -969,6 +1001,8 @@ class ConfiguratorTab(QWidget):
         tr.colorbar = self.tr_cbar_cb.isChecked()
         tr.interpolation = self.tr_interp_combo.currentText()
         tr.contour_levels = self.tr_levels_spin.value()
+        tr.aspect = self.tr_aspect_combo.currentData() or "equal"
+        tr.colorbar_label = self.tr_cbar_label_edit.text()
 
         # Update trace list item label
         curr_row = self.traces_list.currentRow()
@@ -1099,6 +1133,7 @@ class ConfiguratorTab(QWidget):
         ax_cfg.xscale = self.ax_xscale_combo.currentText()
         ax_cfg.yscale = self.ax_yscale_combo.currentText()
         ax_cfg.y2scale = self.ax_y2scale_combo.currentText()
+        ax_cfg.aspect = self.ax_aspect_combo.currentData() or "auto"
 
         def parse_lim(text: str) -> Optional[float]:
             text = text.strip()
@@ -1195,6 +1230,7 @@ class ConfiguratorTab(QWidget):
             plot_type="imshow",
             cmap="viridis",
             colorbar=True,
+            aspect="equal",
             label=""
         )
         ax_cfg.traces.append(new_tr)

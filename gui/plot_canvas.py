@@ -342,6 +342,7 @@ class PlotCanvas(QWidget):
 
                             im = None
                             if tr.plot_type == "imshow":
+                                im_aspect = getattr(tr, "aspect", "equal") or "equal"
                                 im = target_ax.imshow(
                                     mat,
                                     cmap=cmap,
@@ -349,8 +350,13 @@ class PlotCanvas(QWidget):
                                     vmax=vmax,
                                     interpolation=tr.interpolation or "nearest",
                                     origin="lower",
-                                    aspect="auto"
+                                    aspect=im_aspect
                                 )
+                                if im_aspect in ["equal", "scaled"]:
+                                    try:
+                                        target_ax.set_aspect(im_aspect)
+                                    except Exception:
+                                        pass
                             elif tr.plot_type == "contour":
                                 im = target_ax.contour(mat, levels=tr.contour_levels or 10, cmap=cmap)
                             elif tr.plot_type == "contourf":
@@ -447,6 +453,14 @@ class PlotCanvas(QWidget):
                                 ax_twin.set_yscale("log")
                         else:
                             ax_twin.set_yscale(ax_cfg.y2scale)
+
+                    # Aspect Ratio
+                    ax_aspect = getattr(ax_cfg, "aspect", "auto")
+                    if ax_aspect and ax_aspect != "auto":
+                        try:
+                            ax.set_aspect(ax_aspect)
+                        except Exception:
+                            pass
 
                     # 5. Limits
                     if ax_cfg.xlim_min is not None and ax_cfg.xlim_max is not None:

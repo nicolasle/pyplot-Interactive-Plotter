@@ -265,11 +265,14 @@ def generate_python_code(
                         im_kwargs.append(f'vmax={tr.vmax}')
 
                     if tr.plot_type == "imshow":
+                        im_aspect = getattr(tr, "aspect", "equal") or "equal"
                         im_kwargs.append(f'interpolation="{tr.interpolation}"')
                         im_kwargs.append('origin="lower"')
-                        im_kwargs.append('aspect="auto"')
+                        im_kwargs.append(f'aspect="{im_aspect}"')
                         kwargs_str = ", ".join(im_kwargs)
                         lines.append(f'im = {target_ax}.imshow({mat_expr}, {kwargs_str})')
+                        if im_aspect in ["equal", "scaled"]:
+                            lines.append(f'{target_ax}.set_aspect("{im_aspect}")')
                     elif tr.plot_type == "contour":
                         im_kwargs.append(f'levels={tr.contour_levels}')
                         kwargs_str = ", ".join(im_kwargs)
@@ -320,6 +323,10 @@ def generate_python_code(
                 lines.append(f'ax.set_yscale("{ax_cfg.yscale}")')
             if has_twinx and ax_cfg.y2scale != "linear":
                 lines.append(f'ax_twin.set_yscale("{ax_cfg.y2scale}")')
+
+            # Aspect ratio
+            if getattr(ax_cfg, "aspect", "auto") and ax_cfg.aspect != "auto":
+                lines.append(f'ax.set_aspect("{ax_cfg.aspect}")')
 
             # Limits
             if ax_cfg.xlim_min is not None and ax_cfg.xlim_max is not None:

@@ -49,6 +49,7 @@ class TraceConfig:
     colorbar_label: str = ""
     interpolation: str = "nearest"
     contour_levels: int = 10
+    aspect: str = "equal"  # 'equal', 'auto', 'scaled'
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -91,6 +92,7 @@ class AxisConfig:
     xscale: str = "linear"  # 'linear', 'log', 'symlog'
     yscale: str = "linear"  # 'linear', 'log', 'symlog'
     y2scale: str = "linear"
+    aspect: str = "auto"    # 'auto', 'equal', 'scaled'
     
     xlim_min: Optional[float] = None
     xlim_max: Optional[float] = None
