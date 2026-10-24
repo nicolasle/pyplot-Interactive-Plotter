@@ -472,9 +472,9 @@ class ConfiguratorTab(QWidget):
         # X-Ticks Position & Visibility
         grid_layout.addWidget(QLabel("X-Ticks:"), 2, 0)
         self.ax_xtick_pos_combo = QComboBox()
-        self.ax_xtick_pos_combo.addItem("Bottom (Default)", "bottom")
-        self.ax_xtick_pos_combo.addItem("Top", "top")
-        self.ax_xtick_pos_combo.addItem("Both (Top & Bottom)", "both")
+        self.ax_xtick_pos_combo.addItem("Both (Top & Bottom) [Default]", "both")
+        self.ax_xtick_pos_combo.addItem("Bottom only", "bottom")
+        self.ax_xtick_pos_combo.addItem("Top only", "top")
         self.ax_xtick_pos_combo.addItem("Hide X Ticks (None)", "none")
         self.ax_xtick_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
         grid_layout.addWidget(self.ax_xtick_pos_combo, 2, 1)
@@ -487,9 +487,9 @@ class ConfiguratorTab(QWidget):
         # Y-Ticks Position & Visibility
         grid_layout.addWidget(QLabel("Y-Ticks:"), 3, 0)
         self.ax_ytick_pos_combo = QComboBox()
-        self.ax_ytick_pos_combo.addItem("Left (Default)", "left")
-        self.ax_ytick_pos_combo.addItem("Right", "right")
-        self.ax_ytick_pos_combo.addItem("Both (Left & Right)", "both")
+        self.ax_ytick_pos_combo.addItem("Both (Left & Right) [Default]", "both")
+        self.ax_ytick_pos_combo.addItem("Left only", "left")
+        self.ax_ytick_pos_combo.addItem("Right only", "right")
         self.ax_ytick_pos_combo.addItem("Hide Y Ticks (None)", "none")
         self.ax_ytick_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
         grid_layout.addWidget(self.ax_ytick_pos_combo, 3, 1)
@@ -536,6 +536,7 @@ class ConfiguratorTab(QWidget):
         panel_layout.setSpacing(8)
 
         self.ax_show_panel_label_cb = QCheckBox("Show Panel Label")
+        self.ax_show_panel_label_cb.setChecked(True)
         self.ax_show_panel_label_cb.stateChanged.connect(self._on_axes_prop_changed)
         panel_layout.addWidget(self.ax_show_panel_label_cb, 0, 0)
 
@@ -840,7 +841,7 @@ class ConfiguratorTab(QWidget):
             self.ax_tick_dir_combo.setCurrentIndex(idx)
 
         # X-Ticks
-        x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+        x_pos = getattr(ax_cfg, "xtick_position", "both")
         for i in range(self.ax_xtick_pos_combo.count()):
             if self.ax_xtick_pos_combo.itemData(i) == x_pos:
                 self.ax_xtick_pos_combo.setCurrentIndex(i)
@@ -848,7 +849,7 @@ class ConfiguratorTab(QWidget):
         self.ax_show_xticklabels_cb.setChecked(getattr(ax_cfg, "show_xticklabels", True))
 
         # Y-Ticks
-        y_pos = getattr(ax_cfg, "ytick_position", "left")
+        y_pos = getattr(ax_cfg, "ytick_position", "both")
         for i in range(self.ax_ytick_pos_combo.count()):
             if self.ax_ytick_pos_combo.itemData(i) == y_pos:
                 self.ax_ytick_pos_combo.setCurrentIndex(i)
@@ -865,7 +866,7 @@ class ConfiguratorTab(QWidget):
         self.ax_legend_ncol_spin.setValue(ax_cfg.legend_ncol)
 
         # Panel Label
-        self.ax_show_panel_label_cb.setChecked(getattr(ax_cfg, "show_panel_label", False))
+        self.ax_show_panel_label_cb.setChecked(getattr(ax_cfg, "show_panel_label", True))
         r, c = self.current_coord
         idx = r * self.fig_config.ncols + c
         default_lbl = chr(ord('a') + idx) if idx < 26 else f"p{idx+1}"
@@ -1295,9 +1296,9 @@ class ConfiguratorTab(QWidget):
         ax_cfg.grid_alpha = self.ax_grid_alpha_spin.value()
 
         ax_cfg.tick_direction = self.ax_tick_dir_combo.currentText()
-        ax_cfg.xtick_position = self.ax_xtick_pos_combo.currentData() or "bottom"
+        ax_cfg.xtick_position = self.ax_xtick_pos_combo.currentData() or "both"
         ax_cfg.show_xticklabels = self.ax_show_xticklabels_cb.isChecked()
-        ax_cfg.ytick_position = self.ax_ytick_pos_combo.currentData() or "left"
+        ax_cfg.ytick_position = self.ax_ytick_pos_combo.currentData() or "both"
         ax_cfg.show_yticklabels = self.ax_show_yticklabels_cb.isChecked()
         ax_cfg.tick_top = ax_cfg.xtick_position in ("top", "both")
         ax_cfg.tick_right = ax_cfg.ytick_position in ("right", "both")

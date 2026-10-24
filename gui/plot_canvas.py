@@ -651,7 +651,7 @@ class PlotCanvas(QWidget):
                     )
 
                     # X-Ticks visibility and position
-                    x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+                    x_pos = getattr(ax_cfg, "xtick_position", "both")
                     show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
 
                     if x_pos == "none":
@@ -664,7 +664,7 @@ class PlotCanvas(QWidget):
                         ax.tick_params(axis="x", which="both", bottom=True, top=ax_cfg.tick_top, labelbottom=show_x_labels, labeltop=False)
 
                     # Y-Ticks visibility and position
-                    y_pos = getattr(ax_cfg, "ytick_position", "left")
+                    y_pos = getattr(ax_cfg, "ytick_position", "both")
                     show_y_labels = getattr(ax_cfg, "show_yticklabels", True)
 
                     if y_pos == "none":

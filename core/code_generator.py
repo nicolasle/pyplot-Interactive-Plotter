@@ -360,7 +360,7 @@ def generate_python_code(
             # Ticks direction & position
             lines.append(f'ax.tick_params(direction="{ax_cfg.tick_direction}")')
 
-            x_pos = getattr(ax_cfg, "xtick_position", "bottom")
+            x_pos = getattr(ax_cfg, "xtick_position", "both")
             show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
             if x_pos == "none":
                 lines.append('ax.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False, labeltop=False)')
@@ -371,7 +371,7 @@ def generate_python_code(
             else:  # "bottom"
                 lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom={show_x_labels}, labeltop=False)')
 
-            y_pos = getattr(ax_cfg, "ytick_position", "left")
+            y_pos = getattr(ax_cfg, "ytick_position", "both")
             show_y_labels = getattr(ax_cfg, "show_yticklabels", True)
             if y_pos == "none":
                 lines.append('ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=False, labelright=False)')

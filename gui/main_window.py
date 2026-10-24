@@ -214,7 +214,7 @@ class MainWindow(QMainWindow):
             ax0.title = "Optical Emission Spectrum"
             ax0.xlabel = "Wavelength $\\lambda$ (nm)"
             ax0.ylabel = "Intensity (a.u.)"
-            ax0.grid_major = True
+            ax0.grid_major = False
             
             tr = TraceConfig(
                 name="Scan 1",

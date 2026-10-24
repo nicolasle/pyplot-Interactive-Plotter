@@ -104,17 +104,17 @@ class AxisConfig:
     y2lim_min: Optional[float] = None
     y2lim_max: Optional[float] = None
 
-    grid_major: bool = True
+    grid_major: bool = False
     grid_minor: bool = False
     grid_style: str = "--"
     grid_alpha: float = 0.4
     
     tick_direction: str = "in"  # 'in', 'out', 'inout'
-    tick_top: bool = False
-    tick_right: bool = False
+    tick_top: bool = True
+    tick_right: bool = True
 
-    xtick_position: str = "bottom"  # 'bottom', 'top', 'both', 'none'
-    ytick_position: str = "left"    # 'left', 'right', 'both', 'none'
+    xtick_position: str = "both"  # 'bottom', 'top', 'both', 'none'
+    ytick_position: str = "both"  # 'left', 'right', 'both', 'none'
     show_xticklabels: bool = True
     show_yticklabels: bool = True
 
@@ -135,7 +135,7 @@ class AxisConfig:
     sec_yaxis_preset: str = "Custom Formula"
 
     # Panel Label (Publication Tag, e.g. a, b, c...)
-    show_panel_label: bool = False
+    show_panel_label: bool = True
     panel_label: str = ""
     panel_label_loc: str = "top-left"   # 'top-left', 'top-right', 'bottom-left', 'bottom-right'
     panel_label_square: bool = True     # True: black square with white letter; False: plain black font
