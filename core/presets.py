@@ -106,3 +106,72 @@ PUBLICATION_PRESETS: Dict[str, Dict[str, Any]] = {
         "description": "Standard interactive preview layout."
     }
 }
+
+
+SECONDARY_AXIS_PRESETS: Dict[str, Dict[str, str]] = {
+    "Custom Formula": {
+        "fwd": "",
+        "inv": "",
+        "label": "",
+    },
+    "Wavelength (nm) ⇄ Photon Energy (eV)": {
+        "fwd": "1239.84193 / x",
+        "inv": "1239.84193 / x",
+        "label": "Photon Energy (eV)",
+    },
+    "Wavelength (μm) ⇄ Wavenumber (cm⁻¹)": {
+        "fwd": "10000.0 / x",
+        "inv": "10000.0 / x",
+        "label": "Wavenumber (cm⁻¹)",
+    },
+    "Wavelength (nm) ⇄ Wavenumber (cm⁻¹)": {
+        "fwd": "1e7 / x",
+        "inv": "1e7 / x",
+        "label": "Wavenumber (cm⁻¹)",
+    },
+    "Frequency (Hz) ⇄ Period (s)": {
+        "fwd": "1.0 / x",
+        "inv": "1.0 / x",
+        "label": "Period (s)",
+    },
+    "Frequency (THz) ⇄ Energy (meV)": {
+        "fwd": "x * 4.135667",
+        "inv": "x / 4.135667",
+        "label": "Energy (meV)",
+    },
+    "Temperature (°C) ⇄ Fahrenheit (°F)": {
+        "fwd": "x * 1.8 + 32",
+        "inv": "(x - 32) / 1.8",
+        "label": "Temperature (°F)",
+    },
+    "Temperature (°C) ⇄ Kelvin (K)": {
+        "fwd": "x + 273.15",
+        "inv": "x - 273.15",
+        "label": "Temperature (K)",
+    },
+    "Angle: Degrees (°) ⇄ Radians (rad)": {
+        "fwd": "np.deg2rad(x)",
+        "inv": "np.rad2deg(x)",
+        "label": "Angle (rad)",
+    },
+    "Linear Ratio ⇄ Power dB": {
+        "fwd": "10 * np.log10(x)",
+        "inv": "10**(x / 10)",
+        "label": "Power (dB)",
+    },
+    "Linear Ratio ⇄ Amplitude dB": {
+        "fwd": "20 * np.log10(x)",
+        "inv": "10**(x / 20)",
+        "label": "Amplitude (dB)",
+    },
+    "Multiply × 1000 (e.g. V to mV / m to mm)": {
+        "fwd": "x * 1000",
+        "inv": "x / 1000",
+        "label": "Scaled (×1000)",
+    },
+    "Divide by 1000 (e.g. Hz to kHz / nm to μm)": {
+        "fwd": "x / 1000",
+        "inv": "x * 1000",
+        "label": "Scaled (/1000)",
+    },
+}

@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor
 
 from core.models import FigureConfig, AxisConfig, TraceConfig, ReferenceLineConfig, Dataset
+from core.presets import SECONDARY_AXIS_PRESETS
 
 
 class ConfiguratorTab(QWidget):
@@ -228,6 +229,13 @@ class ConfiguratorTab(QWidget):
         self.ref_visible_cb.stateChanged.connect(self._on_ref_prop_changed)
         ref_edit_layout.addWidget(self.ref_visible_cb, 4, 0)
 
+        ref_edit_layout.addWidget(QLabel("Target Axis:"), 4, 1)
+        self.ref_axis_combo = QComboBox()
+        self.ref_axis_combo.addItem("Primary Axis (y / x)", "primary")
+        self.ref_axis_combo.addItem("Twin Y Axis (twinx)", "twinx")
+        self.ref_axis_combo.currentIndexChanged.connect(self._on_ref_prop_changed)
+        ref_edit_layout.addWidget(self.ref_axis_combo, 4, 2, 1, 2)
+
         ref_splitter.addWidget(ref_editor_box)
         ref_splitter.setSizes([180, 260])
         ref_layout.addWidget(ref_splitter)
@@ -333,6 +341,101 @@ class ConfiguratorTab(QWidget):
         self.ax_y2max_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_y2max_edit, 4, 3)
         axes_layout.addWidget(scale_box)
+
+        # Secondary Axes (Mathematical Conversion Scales)
+        sec_axes_box = QGroupBox("Secondary Axes (Math Formula of Primary Axis)")
+        sec_axes_layout = QVBoxLayout(sec_axes_box)
+        sec_axes_layout.setSpacing(8)
+
+        # Secondary X-Axis Box
+        sec_x_box = QGroupBox("Secondary X-Axis (e.g. Top: nm ⇄ eV, Wavenumber)")
+        sec_x_layout = QGridLayout(sec_x_box)
+        sec_x_layout.setSpacing(6)
+
+        self.sec_x_cb = QCheckBox("Enable Secondary X-Axis")
+        self.sec_x_cb.stateChanged.connect(self._on_sec_x_toggled)
+        sec_x_layout.addWidget(self.sec_x_cb, 0, 0, 1, 2)
+
+        sec_x_layout.addWidget(QLabel("Preset:"), 0, 2)
+        self.sec_x_preset_combo = QComboBox()
+        for p_name in SECONDARY_AXIS_PRESETS.keys():
+            self.sec_x_preset_combo.addItem(p_name)
+        self.sec_x_preset_combo.currentIndexChanged.connect(self._on_sec_x_preset_selected)
+        sec_x_layout.addWidget(self.sec_x_preset_combo, 0, 3)
+
+        sec_x_layout.addWidget(QLabel("Location:"), 1, 0)
+        self.sec_x_loc_combo = QComboBox()
+        self.sec_x_loc_combo.addItems(["top", "bottom"])
+        self.sec_x_loc_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        sec_x_layout.addWidget(self.sec_x_loc_combo, 1, 1)
+
+        sec_x_layout.addWidget(QLabel("Axis Label:"), 1, 2)
+        self.sec_x_label_edit = QLineEdit()
+        self.sec_x_label_edit.setPlaceholderText("e.g. Photon Energy (eV)")
+        self.sec_x_label_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_x_layout.addWidget(self.sec_x_label_edit, 1, 3)
+
+        sec_x_layout.addWidget(QLabel("Forward Formula f(x):"), 2, 0)
+        self.sec_x_fwd_edit = QLineEdit()
+        self.sec_x_fwd_edit.setPlaceholderText("e.g. 1239.84193 / x")
+        self.sec_x_fwd_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_x_layout.addWidget(self.sec_x_fwd_edit, 2, 1)
+
+        sec_x_layout.addWidget(QLabel("Inverse Formula g(x):"), 2, 2)
+        self.sec_x_inv_edit = QLineEdit()
+        self.sec_x_inv_edit.setPlaceholderText("Optional (auto-inverted if empty)")
+        self.sec_x_inv_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_x_layout.addWidget(self.sec_x_inv_edit, 2, 3)
+
+        sec_axes_layout.addWidget(sec_x_box)
+
+        # Secondary Y-Axis Box
+        sec_y_box = QGroupBox("Secondary Y-Axis (e.g. Right: °C ⇄ °F, Linear ⇄ dB)")
+        sec_y_layout = QGridLayout(sec_y_box)
+        sec_y_layout.setSpacing(6)
+
+        self.sec_y_cb = QCheckBox("Enable Secondary Y-Axis")
+        self.sec_y_cb.stateChanged.connect(self._on_sec_y_toggled)
+        sec_y_layout.addWidget(self.sec_y_cb, 0, 0, 1, 2)
+
+        sec_y_layout.addWidget(QLabel("Preset:"), 0, 2)
+        self.sec_y_preset_combo = QComboBox()
+        for p_name in SECONDARY_AXIS_PRESETS.keys():
+            self.sec_y_preset_combo.addItem(p_name)
+        self.sec_y_preset_combo.currentIndexChanged.connect(self._on_sec_y_preset_selected)
+        sec_y_layout.addWidget(self.sec_y_preset_combo, 0, 3)
+
+        sec_y_layout.addWidget(QLabel("Location:"), 1, 0)
+        self.sec_y_loc_combo = QComboBox()
+        self.sec_y_loc_combo.addItems(["right", "left"])
+        self.sec_y_loc_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
+        sec_y_layout.addWidget(self.sec_y_loc_combo, 1, 1)
+
+        sec_y_layout.addWidget(QLabel("Axis Label:"), 1, 2)
+        self.sec_y_label_edit = QLineEdit()
+        self.sec_y_label_edit.setPlaceholderText("e.g. Temperature (°F)")
+        self.sec_y_label_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_y_layout.addWidget(self.sec_y_label_edit, 1, 3)
+
+        sec_y_layout.addWidget(QLabel("Forward Formula f(y):"), 2, 0)
+        self.sec_y_fwd_edit = QLineEdit()
+        self.sec_y_fwd_edit.setPlaceholderText("e.g. y * 1.8 + 32")
+        self.sec_y_fwd_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_y_layout.addWidget(self.sec_y_fwd_edit, 2, 1)
+
+        sec_y_layout.addWidget(QLabel("Inverse Formula g(y):"), 2, 2)
+        self.sec_y_inv_edit = QLineEdit()
+        self.sec_y_inv_edit.setPlaceholderText("Optional (auto-inverted if empty)")
+        self.sec_y_inv_edit.textChanged.connect(self._on_axes_prop_changed)
+        sec_y_layout.addWidget(self.sec_y_inv_edit, 2, 3)
+
+        sec_axes_layout.addWidget(sec_y_box)
+
+        sec_hint = QLabel("💡 <i>Formula uses variable 'x' or 'y'. Supports standard functions: np.log10, np.exp, np.sqrt, rad2deg, etc. Leave inverse empty to auto-invert.</i>")
+        sec_hint.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        sec_axes_layout.addWidget(sec_hint)
+
+        axes_layout.addWidget(sec_axes_box)
 
         # Grids & Ticks
         grid_box = QGroupBox("Grids & Ticks")
@@ -782,6 +885,30 @@ class ConfiguratorTab(QWidget):
         box_size = ax_cfg.panel_label_box_size if ax_cfg.panel_label_box_size is not None else round(lbl_size * 1.30, 1)
         self.ax_panel_label_box_spin.setValue(box_size)
 
+        # Secondary X Axis
+        self.sec_x_cb.setChecked(getattr(ax_cfg, "sec_xaxis_enabled", False))
+        idx = self.sec_x_loc_combo.findText(getattr(ax_cfg, "sec_xaxis_location", "top"))
+        if idx >= 0:
+            self.sec_x_loc_combo.setCurrentIndex(idx)
+        idx = self.sec_x_preset_combo.findText(getattr(ax_cfg, "sec_xaxis_preset", "Custom Formula"))
+        if idx >= 0:
+            self.sec_x_preset_combo.setCurrentIndex(idx)
+        self.sec_x_label_edit.setText(getattr(ax_cfg, "sec_xaxis_label", ""))
+        self.sec_x_fwd_edit.setText(getattr(ax_cfg, "sec_xaxis_fwd", ""))
+        self.sec_x_inv_edit.setText(getattr(ax_cfg, "sec_xaxis_inv", ""))
+
+        # Secondary Y Axis
+        self.sec_y_cb.setChecked(getattr(ax_cfg, "sec_yaxis_enabled", False))
+        idx = self.sec_y_loc_combo.findText(getattr(ax_cfg, "sec_yaxis_location", "right"))
+        if idx >= 0:
+            self.sec_y_loc_combo.setCurrentIndex(idx)
+        idx = self.sec_y_preset_combo.findText(getattr(ax_cfg, "sec_yaxis_preset", "Custom Formula"))
+        if idx >= 0:
+            self.sec_y_preset_combo.setCurrentIndex(idx)
+        self.sec_y_label_edit.setText(getattr(ax_cfg, "sec_yaxis_label", ""))
+        self.sec_y_fwd_edit.setText(getattr(ax_cfg, "sec_yaxis_fwd", ""))
+        self.sec_y_inv_edit.setText(getattr(ax_cfg, "sec_yaxis_inv", ""))
+
         # Traces List
         self._refresh_traces_list()
 
@@ -816,11 +943,12 @@ class ConfiguratorTab(QWidget):
 
         for idx, ref in enumerate(ax_cfg.ref_lines):
             type_badge = ref.type.upper()
+            axis_badge = " [TwinX]" if getattr(ref, "target_axis", "primary") == "twinx" else ""
             lbl = ref.label or "Ref Line"
             if ref.type in ["hline", "vline"]:
-                text = f"[{type_badge}] {lbl} @ {ref.val1:.4g}"
+                text = f"[{type_badge}{axis_badge}] {lbl} @ {ref.val1:.4g}"
             else:
-                text = f"[{type_badge}] {lbl} ({ref.val1:.4g} to {ref.val2:.4g})"
+                text = f"[{type_badge}{axis_badge}] {lbl} ({ref.val1:.4g} to {ref.val2:.4g})"
             
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, ref.id)
@@ -1073,6 +1201,14 @@ class ConfiguratorTab(QWidget):
         self.ref_alpha_spin.setValue(ref.alpha)
         self.ref_label_edit.setText(ref.label)
         self.ref_visible_cb.setChecked(getattr(ref, "visible", True))
+
+        target_ax = getattr(ref, "target_axis", "primary")
+        idx = self.ref_axis_combo.findData(target_ax)
+        if idx >= 0:
+            self.ref_axis_combo.setCurrentIndex(idx)
+        else:
+            self.ref_axis_combo.setCurrentIndex(0)
+
         self._block_signals = False
 
     def _open_ref_color_picker(self):
@@ -1099,16 +1235,18 @@ class ConfiguratorTab(QWidget):
         ref.alpha = self.ref_alpha_spin.value()
         ref.label = self.ref_label_edit.text()
         ref.visible = self.ref_visible_cb.isChecked()
+        ref.target_axis = self.ref_axis_combo.currentData() or "primary"
 
         # Update item in list
         curr_row = self.ref_list.currentRow()
         if curr_row >= 0:
             type_badge = ref.type.upper()
+            axis_badge = " [TwinX]" if getattr(ref, "target_axis", "primary") == "twinx" else ""
             lbl = ref.label or "Ref Line"
             if ref.type in ["hline", "vline"]:
-                text = f"[{type_badge}] {lbl} @ {ref.val1:.4g}"
+                text = f"[{type_badge}{axis_badge}] {lbl} @ {ref.val1:.4g}"
             else:
-                text = f"[{type_badge}] {lbl} ({ref.val1:.4g} to {ref.val2:.4g})"
+                text = f"[{type_badge}{axis_badge}] {lbl} ({ref.val1:.4g} to {ref.val2:.4g})"
             self.ref_list.item(curr_row).setText(text)
 
         self.config_changed.emit()
@@ -1177,7 +1315,85 @@ class ConfiguratorTab(QWidget):
         ax_cfg.panel_label_size = self.ax_panel_label_size_spin.value()
         ax_cfg.panel_label_box_size = self.ax_panel_label_box_spin.value()
 
+        # Secondary X Axis
+        ax_cfg.sec_xaxis_enabled = self.sec_x_cb.isChecked()
+        ax_cfg.sec_xaxis_location = self.sec_x_loc_combo.currentText()
+        ax_cfg.sec_xaxis_preset = self.sec_x_preset_combo.currentText()
+        ax_cfg.sec_xaxis_label = self.sec_x_label_edit.text()
+        ax_cfg.sec_xaxis_fwd = self.sec_x_fwd_edit.text().strip()
+        ax_cfg.sec_xaxis_inv = self.sec_x_inv_edit.text().strip()
+
+        # Secondary Y Axis
+        ax_cfg.sec_yaxis_enabled = self.sec_y_cb.isChecked()
+        ax_cfg.sec_yaxis_location = self.sec_y_loc_combo.currentText()
+        ax_cfg.sec_yaxis_preset = self.sec_y_preset_combo.currentText()
+        ax_cfg.sec_yaxis_label = self.sec_y_label_edit.text()
+        ax_cfg.sec_yaxis_fwd = self.sec_y_fwd_edit.text().strip()
+        ax_cfg.sec_yaxis_inv = self.sec_y_inv_edit.text().strip()
+
         self.config_changed.emit()
+
+    def _on_sec_x_preset_selected(self, idx: int):
+        preset_name = self.sec_x_preset_combo.currentText()
+        preset = SECONDARY_AXIS_PRESETS.get(preset_name)
+        if not preset or preset_name == "Custom Formula":
+            return
+        self._block_signals = True
+        self.sec_x_cb.setChecked(True)
+        self.sec_x_fwd_edit.setText(preset["fwd"])
+        self.sec_x_inv_edit.setText(preset["inv"])
+        self.sec_x_label_edit.setText(preset["label"])
+        self._block_signals = False
+        self._on_axes_prop_changed()
+
+    def _on_sec_y_preset_selected(self, idx: int):
+        preset_name = self.sec_y_preset_combo.currentText()
+        preset = SECONDARY_AXIS_PRESETS.get(preset_name)
+        if not preset or preset_name == "Custom Formula":
+            return
+        self._block_signals = True
+        self.sec_y_cb.setChecked(True)
+        fwd = preset["fwd"].replace(" / x", " / y").replace("x *", "y *").replace("x +", "y +").replace("x -", "y -").replace("(x", "(y")
+        inv = preset["inv"].replace(" / x", " / y").replace("x *", "y *").replace("x +", "y +").replace("x -", "y -").replace("(x", "(y")
+        self.sec_y_fwd_edit.setText(fwd)
+        self.sec_y_inv_edit.setText(inv)
+        self.sec_y_label_edit.setText(preset["label"])
+        self._block_signals = False
+        self._on_axes_prop_changed()
+
+    def _on_sec_x_toggled(self, state: int):
+        if self._block_signals:
+            return
+        if self.sec_x_cb.isChecked() and not self.sec_x_fwd_edit.text().strip():
+            preset = SECONDARY_AXIS_PRESETS.get("Wavelength (nm) ⇄ Photon Energy (eV)")
+            if preset:
+                self._block_signals = True
+                self.sec_x_fwd_edit.setText(preset["fwd"])
+                self.sec_x_inv_edit.setText(preset["inv"])
+                self.sec_x_label_edit.setText(preset["label"])
+                idx = self.sec_x_preset_combo.findText("Wavelength (nm) ⇄ Photon Energy (eV)")
+                if idx >= 0:
+                    self.sec_x_preset_combo.setCurrentIndex(idx)
+                self._block_signals = False
+        self._on_axes_prop_changed()
+
+    def _on_sec_y_toggled(self, state: int):
+        if self._block_signals:
+            return
+        if self.sec_y_cb.isChecked() and not self.sec_y_fwd_edit.text().strip():
+            preset = SECONDARY_AXIS_PRESETS.get("Temperature (°C) ⇄ Fahrenheit (°F)")
+            if preset:
+                self._block_signals = True
+                fwd = preset["fwd"].replace(" / x", " / y").replace("x *", "y *").replace("x +", "y +").replace("x -", "y -").replace("(x", "(y")
+                inv = preset["inv"].replace(" / x", " / y").replace("x *", "y *").replace("x +", "y +").replace("x -", "y -").replace("(x", "(y")
+                self.sec_y_fwd_edit.setText(fwd)
+                self.sec_y_inv_edit.setText(inv)
+                self.sec_y_label_edit.setText(preset["label"])
+                idx = self.sec_y_preset_combo.findText("Temperature (°C) ⇄ Fahrenheit (°F)")
+                if idx >= 0:
+                    self.sec_y_preset_combo.setCurrentIndex(idx)
+                self._block_signals = False
+        self._on_axes_prop_changed()
 
     def _on_apply_panel_sizes_all(self):
         """Applies current Font Size, Square Side, and Black Square setting to all subplots."""

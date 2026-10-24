@@ -132,6 +132,54 @@ class PlotCanvas(QWidget):
     def set_active_subplot_label(self, r: int, c: int):
         self.active_ax_label.setText(f"Active Subplot: ({r}, {c})")
 
+    def _build_axis_transform(
+        self,
+        expr_str: str,
+        var: str = "x",
+        fallback_inv_of=None,
+        ax=None,
+        axis_type="x"
+    ):
+        """
+        Creates a safe, vectorized callable function for secondary axis evaluation.
+        If expr_str is empty and fallback_inv_of is given, computes a numerical inverse.
+        """
+        allowed = {
+            'np': np,
+            'sin': np.sin, 'cos': np.cos, 'tan': np.tan,
+            'exp': np.exp, 'log': np.log, 'log10': np.log10, 'log2': np.log2,
+            'sqrt': np.sqrt, 'abs': np.abs,
+            'pi': np.pi, 'e': np.e,
+            'rad2deg': np.rad2deg, 'deg2rad': np.deg2rad,
+        }
+        clean_expr = expr_str.strip() if expr_str else ""
+        if clean_expr:
+            def fn(val):
+                v = np.asarray(val, dtype=float)
+                env = dict(allowed)
+                env['x'] = v
+                env['y'] = v
+                with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+                    res = eval(clean_expr, {"__builtins__": {}}, env)
+                    return np.asarray(res, dtype=float)
+            return fn
+        elif fallback_inv_of is not None and ax is not None:
+            try:
+                lims = ax.get_xlim() if axis_type == "x" else ax.get_ylim()
+                x_min, x_max = lims
+                if x_min == x_max:
+                    x_min, x_max = 1.0, 10.0
+                x_grid = np.linspace(x_min, x_max, 1000)
+                y_grid = fallback_inv_of(x_grid)
+                if np.all(np.isfinite(y_grid)):
+                    if y_grid[0] < y_grid[-1]:
+                        return lambda val: np.interp(np.asarray(val, dtype=float), y_grid, x_grid)
+                    elif y_grid[0] > y_grid[-1]:
+                        return lambda val: np.interp(np.asarray(val, dtype=float), y_grid[::-1], x_grid[::-1])
+            except Exception:
+                pass
+        return lambda val: np.asarray(val, dtype=float)
+
     def render(self, fig_config: FigureConfig, datasets: Dict[str, Dataset]):
         """
         Renders the entire figure and its subplots according to FigureConfig.
@@ -194,8 +242,11 @@ class PlotCanvas(QWidget):
                     self.ax_to_coord[ax] = (r, c)
                     ax_cfg = fig_config.get_axis(r, c)
 
-                    # Twin axis if required by any trace
-                    has_twinx = any(tr.twin_axis == "twinx" for tr in ax_cfg.traces if tr.visible)
+                    # Twin axis if required by any trace or baseline
+                    has_twinx = (
+                        any(tr.twin_axis == "twinx" for tr in ax_cfg.traces if tr.visible) or
+                        any(getattr(ref, "target_axis", "primary") == "twinx" for ref in ax_cfg.ref_lines if getattr(ref, "visible", True))
+                    )
                     ax_twin = ax.twinx() if has_twinx else None
                     if ax_twin:
                         self.ax_to_coord[ax_twin] = (r, c)
@@ -382,9 +433,10 @@ class PlotCanvas(QWidget):
                             ref_color = "#ef4444"
 
                         lbl = ref.label if ref.label else None
+                        target_ref_ax = ax_twin if (getattr(ref, "target_axis", "primary") == "twinx" and ax_twin) else ax
 
                         if ref.type == "hline":
-                            ax.axhline(
+                            target_ref_ax.axhline(
                                 ref.val1,
                                 color=ref_color,
                                 linestyle=ref.linestyle or "--",
@@ -393,7 +445,7 @@ class PlotCanvas(QWidget):
                                 label=lbl
                             )
                         elif ref.type == "vline":
-                            ax.axvline(
+                            target_ref_ax.axvline(
                                 ref.val1,
                                 color=ref_color,
                                 linestyle=ref.linestyle or "--",
@@ -402,7 +454,7 @@ class PlotCanvas(QWidget):
                                 label=lbl
                             )
                         elif ref.type == "hspan":
-                            ax.axhspan(
+                            target_ref_ax.axhspan(
                                 min(ref.val1, ref.val2),
                                 max(ref.val1, ref.val2),
                                 color=ref_color,
@@ -410,7 +462,7 @@ class PlotCanvas(QWidget):
                                 label=lbl
                             )
                         elif ref.type == "vspan":
-                            ax.axvspan(
+                            target_ref_ax.axvspan(
                                 min(ref.val1, ref.val2),
                                 max(ref.val1, ref.val2),
                                 color=ref_color,
@@ -536,6 +588,45 @@ class PlotCanvas(QWidget):
                             direction=ax_cfg.tick_direction,
                             labelsize=font_size
                         )
+
+                    # 7.5 Secondary X and Y Axes (Mathematical Conversion Scales)
+                    if getattr(ax_cfg, "sec_xaxis_enabled", False) and getattr(ax_cfg, "sec_xaxis_fwd", "").strip():
+                        try:
+                            fwd_fn = self._build_axis_transform(ax_cfg.sec_xaxis_fwd, var="x")
+                            inv_fn = self._build_axis_transform(
+                                getattr(ax_cfg, "sec_xaxis_inv", ""),
+                                var="x",
+                                fallback_inv_of=fwd_fn,
+                                ax=ax,
+                                axis_type="x"
+                            )
+                            loc = getattr(ax_cfg, "sec_xaxis_location", "top") or "top"
+                            secax_x = ax.secondary_xaxis(loc, functions=(fwd_fn, inv_fn))
+                            lbl = getattr(ax_cfg, "sec_xaxis_label", "")
+                            if lbl:
+                                secax_x.set_xlabel(lbl, fontsize=font_size)
+                            secax_x.tick_params(direction=ax_cfg.tick_direction, labelsize=max(6, font_size - 1))
+                        except Exception:
+                            pass
+
+                    if getattr(ax_cfg, "sec_yaxis_enabled", False) and getattr(ax_cfg, "sec_yaxis_fwd", "").strip():
+                        try:
+                            fwd_fn = self._build_axis_transform(ax_cfg.sec_yaxis_fwd, var="y")
+                            inv_fn = self._build_axis_transform(
+                                getattr(ax_cfg, "sec_yaxis_inv", ""),
+                                var="y",
+                                fallback_inv_of=fwd_fn,
+                                ax=ax,
+                                axis_type="y"
+                            )
+                            loc = getattr(ax_cfg, "sec_yaxis_location", "right") or "right"
+                            secax_y = ax.secondary_yaxis(loc, functions=(fwd_fn, inv_fn))
+                            lbl = getattr(ax_cfg, "sec_yaxis_label", "")
+                            if lbl:
+                                secax_y.set_ylabel(lbl, fontsize=font_size)
+                            secax_y.tick_params(direction=ax_cfg.tick_direction, labelsize=max(6, font_size - 1))
+                        except Exception:
+                            pass
 
                     # 8. Legend
                     if ax_cfg.show_legend:

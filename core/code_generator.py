@@ -166,8 +166,11 @@ def generate_python_code(
             lines.append(f'# --- Subplot ({r}, {c}) ---')
             lines.append(f'ax = axes[{r}, {c}]')
             
-            # Setup twinx if any trace needs it
-            has_twinx = any(tr.twin_axis == "twinx" for tr in ax_cfg.traces)
+            # Setup twinx if any trace or baseline needs it
+            has_twinx = (
+                any(tr.twin_axis == "twinx" for tr in ax_cfg.traces) or
+                any(getattr(ref, "target_axis", "primary") == "twinx" for ref in ax_cfg.ref_lines)
+            )
             if has_twinx:
                 lines.append('ax_twin = ax.twinx()')
 
@@ -296,15 +299,16 @@ def generate_python_code(
                 if ref.label:
                     ref_kwargs.append(f'label=r"{ref.label}"')
                 kwargs_str = ", ".join(ref_kwargs)
+                target_ref = "ax_twin" if (getattr(ref, "target_axis", "primary") == "twinx" and has_twinx) else "ax"
 
                 if ref.type == "hline":
-                    lines.append(f'ax.axhline({ref.val1}, {kwargs_str})')
+                    lines.append(f'{target_ref}.axhline({ref.val1}, {kwargs_str})')
                 elif ref.type == "vline":
-                    lines.append(f'ax.axvline({ref.val1}, {kwargs_str})')
+                    lines.append(f'{target_ref}.axvline({ref.val1}, {kwargs_str})')
                 elif ref.type == "hspan":
-                    lines.append(f'ax.axhspan({ref.val1}, {ref.val2}, {kwargs_str})')
+                    lines.append(f'{target_ref}.axhspan({min(ref.val1, ref.val2)}, {max(ref.val1, ref.val2)}, {kwargs_str})')
                 elif ref.type == "vspan":
-                    lines.append(f'ax.axvspan({ref.val1}, {ref.val2}, {kwargs_str})')
+                    lines.append(f'{target_ref}.axvspan({min(ref.val1, ref.val2)}, {max(ref.val1, ref.val2)}, {kwargs_str})')
 
             # Subplot axes styling
             if ax_cfg.title:
@@ -377,6 +381,25 @@ def generate_python_code(
                 lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=True, labelleft={show_y_labels}, labelright=False)')
             else:  # "left"
                 lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=False, labelleft={show_y_labels}, labelright=False)')
+
+            # Secondary X and Y Axes (Mathematical Conversion Scales)
+            if getattr(ax_cfg, "sec_xaxis_enabled", False) and getattr(ax_cfg, "sec_xaxis_fwd", "").strip():
+                fwd_expr = ax_cfg.sec_xaxis_fwd.strip()
+                inv_expr = getattr(ax_cfg, "sec_xaxis_inv", "").strip() or fwd_expr
+                loc = getattr(ax_cfg, "sec_xaxis_location", "top") or "top"
+                lines.append(f'secax_x = ax.secondary_xaxis("{loc}", functions=(lambda x: {fwd_expr}, lambda x: {inv_expr}))')
+                lbl = getattr(ax_cfg, "sec_xaxis_label", "").strip()
+                if lbl:
+                    lines.append(f'secax_x.set_xlabel(r"{lbl}")')
+
+            if getattr(ax_cfg, "sec_yaxis_enabled", False) and getattr(ax_cfg, "sec_yaxis_fwd", "").strip():
+                fwd_expr = ax_cfg.sec_yaxis_fwd.strip()
+                inv_expr = getattr(ax_cfg, "sec_yaxis_inv", "").strip() or fwd_expr
+                loc = getattr(ax_cfg, "sec_yaxis_location", "right") or "right"
+                lines.append(f'secax_y = ax.secondary_yaxis("{loc}", functions=(lambda y: {fwd_expr}, lambda y: {inv_expr}))')
+                lbl = getattr(ax_cfg, "sec_yaxis_label", "").strip()
+                if lbl:
+                    lines.append(f'secax_y.set_ylabel(r"{lbl}")')
 
             # Legend
             if ax_cfg.show_legend:

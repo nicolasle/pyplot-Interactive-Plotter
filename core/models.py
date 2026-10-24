@@ -73,6 +73,7 @@ class ReferenceLineConfig:
     alpha: float = 0.8
     label: str = "Baseline"
     visible: bool = True
+    target_axis: str = "primary"  # 'primary' or 'twinx'
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -116,6 +117,22 @@ class AxisConfig:
     ytick_position: str = "left"    # 'left', 'right', 'both', 'none'
     show_xticklabels: bool = True
     show_yticklabels: bool = True
+
+    # Secondary X Axis (mathematical conversion of primary X, e.g. nm <-> eV)
+    sec_xaxis_enabled: bool = False
+    sec_xaxis_location: str = "top"  # 'top' or 'bottom'
+    sec_xaxis_label: str = ""
+    sec_xaxis_fwd: str = "1239.84193 / x"
+    sec_xaxis_inv: str = "1239.84193 / x"
+    sec_xaxis_preset: str = "Custom Formula"
+
+    # Secondary Y Axis (mathematical conversion of primary Y, e.g. deg C <-> deg F)
+    sec_yaxis_enabled: bool = False
+    sec_yaxis_location: str = "right"  # 'right' or 'left'
+    sec_yaxis_label: str = ""
+    sec_yaxis_fwd: str = ""
+    sec_yaxis_inv: str = ""
+    sec_yaxis_preset: str = "Custom Formula"
 
     # Panel Label (Publication Tag, e.g. a, b, c...)
     show_panel_label: bool = False
