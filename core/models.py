@@ -111,10 +111,10 @@ class AxisConfig:
     
     tick_direction: str = "in"  # 'in', 'out', 'inout'
     tick_top: bool = True
-    tick_right: bool = True
+    tick_right: bool = False
 
     xtick_position: str = "both"  # 'bottom', 'top', 'both', 'none'
-    ytick_position: str = "both"  # 'left', 'right', 'both', 'none'
+    ytick_position: str = "left"  # 'left', 'right', 'both', 'none'
     show_xticklabels: bool = True
     show_yticklabels: bool = True
 

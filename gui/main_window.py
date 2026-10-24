@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
             nrows=1, ncols=1,
             width_cm=14.0, height_cm=10.0,
             dpi=120,
-            style="seaborn-v0_8-ticks"
+            style="default"
         )
         self.datasets: Dict[str, Dataset] = {}
         self.current_project_path: Optional[str] = None
@@ -337,7 +337,7 @@ class MainWindow(QMainWindow):
             nrows=1, ncols=1,
             width_cm=14.0, height_cm=10.0,
             dpi=120,
-            style="seaborn-v0_8-ticks"
+            style="default"
         )
         new_datasets: Dict[str, Dataset] = {}
         self.current_project_path = None

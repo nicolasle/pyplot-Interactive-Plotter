@@ -371,16 +371,20 @@ def generate_python_code(
             else:  # "bottom"
                 lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom={show_x_labels}, labeltop=False)')
 
-            y_pos = getattr(ax_cfg, "ytick_position", "both")
+            y_pos = getattr(ax_cfg, "ytick_position", "left")
             show_y_labels = getattr(ax_cfg, "show_yticklabels", True)
             if y_pos == "none":
                 lines.append('ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=False, labelright=False)')
             elif y_pos == "right":
                 lines.append(f'ax.tick_params(axis="y", which="both", left=False, right=True, labelleft=False, labelright={show_y_labels})')
             elif y_pos == "both":
-                lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=True, labelleft={show_y_labels}, labelright=False)')
+                right_val = "False" if has_twinx else "True"
+                lines.append(f'ax.tick_params(axis="y", which="both", left=True, right={right_val}, labelleft={show_y_labels}, labelright=False)')
             else:  # "left"
                 lines.append(f'ax.tick_params(axis="y", which="both", left=True, right=False, labelleft={show_y_labels}, labelright=False)')
+
+            if has_twinx:
+                lines.append(f'ax_twin.tick_params(direction="{ax_cfg.tick_direction}")')
 
             # Secondary X and Y Axes (Mathematical Conversion Scales)
             if getattr(ax_cfg, "sec_xaxis_enabled", False) and getattr(ax_cfg, "sec_xaxis_fwd", "").strip():

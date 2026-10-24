@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor
 
 from core.models import FigureConfig, AxisConfig, TraceConfig, ReferenceLineConfig, Dataset
 from core.presets import SECONDARY_AXIS_PRESETS
+from gui.color_dialog import ColorSelectorDialog
 
 
 class ConfiguratorTab(QWidget):
@@ -487,8 +488,8 @@ class ConfiguratorTab(QWidget):
         # Y-Ticks Position & Visibility
         grid_layout.addWidget(QLabel("Y-Ticks:"), 3, 0)
         self.ax_ytick_pos_combo = QComboBox()
-        self.ax_ytick_pos_combo.addItem("Both (Left & Right) [Default]", "both")
-        self.ax_ytick_pos_combo.addItem("Left only", "left")
+        self.ax_ytick_pos_combo.addItem("Left only [Default]", "left")
+        self.ax_ytick_pos_combo.addItem("Both (Left & Right)", "both")
         self.ax_ytick_pos_combo.addItem("Right only", "right")
         self.ax_ytick_pos_combo.addItem("Hide Y Ticks (None)", "none")
         self.ax_ytick_pos_combo.currentIndexChanged.connect(self._on_axes_prop_changed)
@@ -849,7 +850,7 @@ class ConfiguratorTab(QWidget):
         self.ax_show_xticklabels_cb.setChecked(getattr(ax_cfg, "show_xticklabels", True))
 
         # Y-Ticks
-        y_pos = getattr(ax_cfg, "ytick_position", "both")
+        y_pos = getattr(ax_cfg, "ytick_position", "left")
         for i in range(self.ax_ytick_pos_combo.count()):
             if self.ax_ytick_pos_combo.itemData(i) == y_pos:
                 self.ax_ytick_pos_combo.setCurrentIndex(i)
@@ -1094,7 +1095,8 @@ class ConfiguratorTab(QWidget):
         self._on_trace_prop_changed()
 
     def _open_color_picker(self):
-        color = QColorDialog.getColor()
+        curr_text = self.tr_color_edit.text().strip() or "#1f77b4"
+        color = ColorSelectorDialog.get_color(initial_color=curr_text, parent=self, title="Select Trace Color")
         if color.isValid():
             self.tr_color_edit.setText(color.name())
             self._on_trace_prop_changed()
@@ -1213,7 +1215,8 @@ class ConfiguratorTab(QWidget):
         self._block_signals = False
 
     def _open_ref_color_picker(self):
-        color = QColorDialog.getColor()
+        curr_text = self.ref_color_edit.text().strip() or "#ef4444"
+        color = ColorSelectorDialog.get_color(initial_color=curr_text, parent=self, title="Select Baseline Color")
         if color.isValid():
             self.ref_color_edit.setText(color.name())
             self._on_ref_prop_changed()
@@ -1298,7 +1301,7 @@ class ConfiguratorTab(QWidget):
         ax_cfg.tick_direction = self.ax_tick_dir_combo.currentText()
         ax_cfg.xtick_position = self.ax_xtick_pos_combo.currentData() or "both"
         ax_cfg.show_xticklabels = self.ax_show_xticklabels_cb.isChecked()
-        ax_cfg.ytick_position = self.ax_ytick_pos_combo.currentData() or "both"
+        ax_cfg.ytick_position = self.ax_ytick_pos_combo.currentData() or "left"
         ax_cfg.show_yticklabels = self.ax_show_yticklabels_cb.isChecked()
         ax_cfg.tick_top = ax_cfg.xtick_position in ("top", "both")
         ax_cfg.tick_right = ax_cfg.ytick_position in ("right", "both")
