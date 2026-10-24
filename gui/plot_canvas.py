@@ -5,6 +5,8 @@ and handles interactive mouse click inspection, coordinate tracking,
 and robust centered rendering with full styling support.
 """
 
+import os
+os.environ["QT_API"] = "pyside6"
 from typing import Dict, Any, Optional, Tuple
 import matplotlib
 matplotlib.use("QtAgg")
@@ -16,7 +18,7 @@ from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, TextArea
 from matplotlib.patches import Rectangle
 from matplotlib.text import Text
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox
 from PySide6.QtCore import Signal, Qt
 import numpy as np
 import pandas as pd
@@ -37,7 +39,11 @@ class PlotCanvas(QWidget):
         self.figure = Figure(dpi=100)
         self.figure.set_layout_engine("constrained")
 
+        self.cached_fig_config: Optional[FigureConfig] = None
+        self.cached_datasets: Optional[Dict[str, Dataset]] = None
+
         self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.setStyleSheet("border: 1px solid #3e3e50; border-radius: 2px;")
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
         self.ax_to_coord: Dict[Any, Tuple[int, int]] = {}
@@ -58,11 +64,31 @@ class PlotCanvas(QWidget):
 
         top_bar = QHBoxLayout()
         top_bar.addWidget(self.toolbar)
+        top_bar.addSpacing(6)
+
+        top_bar.addWidget(QLabel("View:"))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Fit (Aspect Ratio)", "fit")
+        self.view_combo.addItem("1:1 True Size (cm)", "1:1")
+        self.view_combo.addItem("Fill Window", "fill")
+        self.view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
+        top_bar.addWidget(self.view_combo)
+
+        self.dim_label = QLabel("14.0 × 10.0 cm")
+        self.dim_label.setStyleSheet("color: #38bdf8; font-weight: 600; font-size: 11px; padding: 2px 8px; border: 1px solid #0284c7; border-radius: 3px; background-color: #0c4a6e33;")
+        top_bar.addWidget(self.dim_label)
+
         top_bar.addStretch()
         top_bar.addWidget(self.active_ax_label)
         layout.addLayout(top_bar)
 
-        layout.addWidget(self.canvas)
+        # Center canvas in scrollable dark artboard workspace
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setAlignment(Qt.AlignCenter)
+        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setStyleSheet("QScrollArea { background-color: #141419; border: 1px solid #282834; border-radius: 4px; }")
+        self.scroll_area.setWidget(self.canvas)
+        layout.addWidget(self.scroll_area)
 
         bottom_bar = QHBoxLayout()
         bottom_bar.addWidget(self.coord_label)
@@ -132,6 +158,69 @@ class PlotCanvas(QWidget):
     def set_active_subplot_label(self, r: int, c: int):
         self.active_ax_label.setText(f"Active Subplot: ({r}, {c})")
 
+    def _apply_canvas_sizing(self):
+        """Calculates and applies precise canvas and figure dimensions."""
+        if not self.cached_fig_config:
+            return
+
+        cfg = self.cached_fig_config
+        w_cm = max(2.0, float(cfg.width_cm or 14.0))
+        h_cm = max(2.0, float(cfg.height_cm or 10.0))
+        w_in = w_cm / 2.54
+        h_in = h_cm / 2.54
+        aspect = w_cm / h_cm
+
+        if hasattr(self, "dim_label"):
+            self.dim_label.setText(f"{w_cm:.1f} × {h_cm:.1f} cm ({w_in:.2f} × {h_in:.2f} in)")
+
+        mode = self.view_combo.currentData() if hasattr(self, "view_combo") else "fit"
+
+        # Determine available viewport bounds
+        vp_w = self.scroll_area.viewport().width() if hasattr(self, "scroll_area") else self.width()
+        vp_h = self.scroll_area.viewport().height() if hasattr(self, "scroll_area") else self.height()
+        if vp_w <= 30:
+            vp_w = 700
+        if vp_h <= 30:
+            vp_h = 520
+
+        if mode == "1:1":
+            screen_dpi = float(self.logicalDpiX() if hasattr(self, "logicalDpiX") else 96.0)
+            target_w = max(100, int(round(w_in * screen_dpi)))
+            target_h = max(100, int(round(h_in * screen_dpi)))
+            target_dpi = screen_dpi
+        elif mode == "fill":
+            target_w = max(100, vp_w - 6)
+            target_h = max(100, vp_h - 6)
+            target_dpi = target_w / w_in
+        else:
+            # "fit" (Default): Maintain true physical aspect ratio (w_cm : h_cm)
+            avail_w = max(100, vp_w - 24)
+            avail_h = max(100, vp_h - 24)
+            if (avail_w / avail_h) > aspect:
+                target_h = avail_h
+                target_w = int(round(target_h * aspect))
+            else:
+                target_w = avail_w
+                target_h = int(round(target_w / aspect))
+            target_dpi = target_w / w_in
+
+        self.canvas.setFixedSize(target_w, target_h)
+        self.figure.set_size_inches(w_in, h_in, forward=False)
+        self.figure.dpi = target_dpi
+
+    def _on_view_mode_changed(self, idx: int):
+        if self.cached_fig_config:
+            self._apply_canvas_sizing()
+            self.canvas.draw_idle()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.cached_fig_config:
+            mode = self.view_combo.currentData() if hasattr(self, "view_combo") else "fit"
+            if mode in ("fit", "fill"):
+                self._apply_canvas_sizing()
+                self.canvas.draw_idle()
+
     def _build_axis_transform(
         self,
         expr_str: str,
@@ -185,6 +274,10 @@ class PlotCanvas(QWidget):
         Renders the entire figure and its subplots according to FigureConfig.
         Ensures proper centering, styling, colorbars, and reference lines.
         """
+        self.cached_fig_config = fig_config
+        self.cached_datasets = datasets
+        self._apply_canvas_sizing()
+
         self.figure.clear()
         self.ax_to_coord.clear()
         self.colorbars.clear()

@@ -70,25 +70,25 @@ class PlotTab(QWidget):
         grid_layout.addWidget(QLabel("Rows (N):"), 0, 0)
         self.rows_spin = QSpinBox()
         self.rows_spin.setRange(1, 8)
-        self.rows_spin.valueChanged.connect(self._on_ui_changed)
+        self.rows_spin.valueChanged.connect(self._on_manual_property_changed)
         grid_layout.addWidget(self.rows_spin, 0, 1)
 
         grid_layout.addWidget(QLabel("Cols (M):"), 0, 2)
         self.cols_spin = QSpinBox()
         self.cols_spin.setRange(1, 8)
-        self.cols_spin.valueChanged.connect(self._on_ui_changed)
+        self.cols_spin.valueChanged.connect(self._on_manual_property_changed)
         grid_layout.addWidget(self.cols_spin, 0, 3)
 
         grid_layout.addWidget(QLabel("Share X:"), 1, 0)
         self.sharex_combo = QComboBox()
         self.sharex_combo.addItems(["none", "all", "row", "col"])
-        self.sharex_combo.currentIndexChanged.connect(self._on_ui_changed)
+        self.sharex_combo.currentIndexChanged.connect(self._on_manual_property_changed)
         grid_layout.addWidget(self.sharex_combo, 1, 1)
 
         grid_layout.addWidget(QLabel("Share Y:"), 1, 2)
         self.sharey_combo = QComboBox()
         self.sharey_combo.addItems(["none", "all", "row", "col"])
-        self.sharey_combo.currentIndexChanged.connect(self._on_ui_changed)
+        self.sharey_combo.currentIndexChanged.connect(self._on_manual_property_changed)
         grid_layout.addWidget(self.sharey_combo, 1, 3)
 
         layout.addWidget(grid_box)
@@ -102,25 +102,25 @@ class PlotTab(QWidget):
         self.width_spin = QDoubleSpinBox()
         self.width_spin.setRange(3.0, 60.0)
         self.width_spin.setSingleStep(0.5)
-        self.width_spin.valueChanged.connect(self._on_ui_changed)
+        self.width_spin.valueChanged.connect(self._on_manual_property_changed)
         dim_layout.addWidget(self.width_spin, 0, 1)
 
         dim_layout.addWidget(QLabel("Height (cm):"), 0, 2)
         self.height_spin = QDoubleSpinBox()
         self.height_spin.setRange(3.0, 60.0)
         self.height_spin.setSingleStep(0.5)
-        self.height_spin.valueChanged.connect(self._on_ui_changed)
+        self.height_spin.valueChanged.connect(self._on_manual_property_changed)
         dim_layout.addWidget(self.height_spin, 0, 3)
 
         dim_layout.addWidget(QLabel("DPI (Resolution):"), 1, 0)
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(72, 1200)
         self.dpi_spin.setSingleStep(50)
-        self.dpi_spin.valueChanged.connect(self._on_ui_changed)
+        self.dpi_spin.valueChanged.connect(self._on_manual_property_changed)
         dim_layout.addWidget(self.dpi_spin, 1, 1)
 
         self.tight_layout_cb = QCheckBox("Tight Layout (auto padding)")
-        self.tight_layout_cb.stateChanged.connect(self._on_ui_changed)
+        self.tight_layout_cb.stateChanged.connect(self._on_manual_property_changed)
         dim_layout.addWidget(self.tight_layout_cb, 1, 2, 1, 2)
 
         layout.addWidget(dim_box)
@@ -140,30 +140,30 @@ class PlotTab(QWidget):
             "ggplot",
             "tableau-colorblind10"
         ])
-        self.style_combo.currentIndexChanged.connect(self._on_ui_changed)
+        self.style_combo.currentIndexChanged.connect(self._on_manual_property_changed)
         style_layout.addWidget(self.style_combo, 0, 1)
 
         style_layout.addWidget(QLabel("Font Family:"), 0, 2)
         self.font_family_combo = QComboBox()
         self.font_family_combo.addItems(["sans-serif", "serif", "monospace"])
-        self.font_family_combo.currentIndexChanged.connect(self._on_ui_changed)
+        self.font_family_combo.currentIndexChanged.connect(self._on_manual_property_changed)
         style_layout.addWidget(self.font_family_combo, 0, 3)
 
         style_layout.addWidget(QLabel("Base Font Size (pt):"), 1, 0)
         self.font_size_spin = QDoubleSpinBox()
         self.font_size_spin.setRange(5.0, 32.0)
         self.font_size_spin.setSingleStep(0.5)
-        self.font_size_spin.valueChanged.connect(self._on_ui_changed)
+        self.font_size_spin.valueChanged.connect(self._on_manual_property_changed)
         style_layout.addWidget(self.font_size_spin, 1, 1)
 
         self.usetex_cb = QCheckBox("LaTeX Rendering (usetex)")
-        self.usetex_cb.stateChanged.connect(self._on_ui_changed)
+        self.usetex_cb.stateChanged.connect(self._on_manual_property_changed)
         style_layout.addWidget(self.usetex_cb, 1, 2, 1, 2)
 
         style_layout.addWidget(QLabel("Figure Super-Title:"), 2, 0)
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("Optional overall title...")
-        self.title_edit.textChanged.connect(self._on_ui_changed)
+        self.title_edit.textChanged.connect(self._on_manual_property_changed)
         style_layout.addWidget(self.title_edit, 2, 1, 1, 3)
 
         layout.addWidget(style_box)
@@ -266,6 +266,18 @@ class PlotTab(QWidget):
         else:
             self.fig_config.preset_name = "Custom"
             self.preset_desc.setText("Custom layout settings.")
+
+    def _on_manual_property_changed(self):
+        """User manually edited layout, dimension, or styling; falls back to Custom preset."""
+        if self._block_signals:
+            return
+        if self.preset_combo.currentIndex() != 0:
+            self._block_signals = True
+            self.preset_combo.setCurrentIndex(0)
+            self.preset_desc.setText("Custom layout settings.")
+            self.fig_config.preset_name = "Custom"
+            self._block_signals = False
+        self._on_ui_changed()
 
     def _on_ui_changed(self):
         if self._block_signals:
