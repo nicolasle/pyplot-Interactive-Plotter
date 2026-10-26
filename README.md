@@ -84,12 +84,57 @@ Handles real-world messy experimental data:
 
 ---
 
-## Quick Start
+## Installation & Setup
 
-### Run the Application:
+### 1. Prerequisites
+* **Python 3.9+** (recommended: Python 3.10 – 3.12)
+* Optional: LaTeX distribution (e.g. MiKTeX, TeX Live) if enabling native LaTeX text rendering (`text.usetex = True`).
+
+### 2. Clone the Repository
 ```bash
-python app.py
+git clone https://github.com/nicolasle/pyplot-Interactive-Plotter.git
+cd pyplot-Interactive-Plotter
 ```
+
+### 3. Create a Virtual Environment (Recommended)
+
+#### Using `venv` (Standard Python):
+* **Windows (PowerShell / Command Prompt)**:
+  ```powershell
+  python -m venv .venv
+  .venv\Scripts\activate
+  ```
+* **Linux / macOS**:
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  ```
+
+#### Or using `conda`:
+```bash
+conda create -n plotter python=3.11 -y
+conda activate plotter
+```
+
+### 4. Install Dependencies
+Install all required packages via `pip`:
+```bash
+pip install -r requirements.txt
+```
+
+*(Alternatively, install the core packages directly: `pip install PySide6 matplotlib numpy pandas nbformat`)*
+
+---
+
+## Running the Application
+
+* **From the Terminal / Command Line**:
+  ```bash
+  python app.py
+  ```
+
+* **On Windows (Direct Launcher)**:
+  Double-click `run_plotter.bat` to launch the application directly.
 
 ### Sample Data Included:
 Test files are pre-packaged in the `sample_data/` folder:
@@ -105,6 +150,8 @@ Test files are pre-packaged in the `sample_data/` folder:
 ```
 Interactive plotter/
 ├── app.py                      # Main desktop application launcher
+├── run_plotter.bat             # Windows one-click launcher
+├── requirements.txt            # Python dependencies
 ├── README.md                   # Documentation
 ├── core/
 │   ├── models.py               # Data models (FigureConfig, AxisConfig, TraceConfig, Dataset)
@@ -114,6 +161,7 @@ Interactive plotter/
 ├── gui/
 │   ├── main_window.py          # Main PySide6 window with persistent live plot splitter
 │   ├── plot_canvas.py          # Embedded Matplotlib canvas with click-to-select
+│   ├── color_dialog.py         # Color selector with Matplotlib tab10 palette
 │   ├── smart_import_dialog.py  # Interactive import wizard with raw & live parsed preview
 │   ├── styles.py               # Modern dark scientific UI stylesheet
 │   └── tabs/
