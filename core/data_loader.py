@@ -460,7 +460,10 @@ def evaluate_column_expression(df: pd.DataFrame, new_col_name: str, expression: 
         # Add columns directly to namespace
         for col in df.columns:
             # Clean identifier
-            safe_name = re.sub(r"\W+", "_", str(col)).strip("_")
+            col_str = str(col)
+            safe_name = re.sub(r"\W+", "_", col_str).strip("_")
+            if safe_name and safe_name[0].isdigit():
+                safe_name = f"c_{safe_name}"
             if safe_name:
                 safe_dict[safe_name] = df[col]
             safe_dict[str(col)] = df[col]
