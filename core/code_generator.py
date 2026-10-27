@@ -361,12 +361,19 @@ def generate_python_code(
             lines.append(f'ax.tick_params(direction="{ax_cfg.tick_direction}")')
 
             x_pos = getattr(ax_cfg, "xtick_position", "both")
+            has_sec_x_top = (
+                getattr(ax_cfg, "sec_xaxis_enabled", False)
+                and bool(getattr(ax_cfg, "sec_xaxis_fwd", "").strip())
+                and getattr(ax_cfg, "sec_xaxis_location", "top") == "top"
+            )
+            effective_x_pos = "bottom" if (has_sec_x_top and x_pos == "both") else x_pos
+
             show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
-            if x_pos == "none":
+            if effective_x_pos == "none":
                 lines.append('ax.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False, labeltop=False)')
-            elif x_pos == "top":
+            elif effective_x_pos == "top":
                 lines.append(f'ax.tick_params(axis="x", which="both", bottom=False, top=True, labelbottom=False, labeltop={show_x_labels})')
-            elif x_pos == "both":
+            elif effective_x_pos == "both":
                 lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=True, labelbottom={show_x_labels}, labeltop=False)')
             else:  # "bottom"
                 lines.append(f'ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom={show_x_labels}, labeltop=False)')

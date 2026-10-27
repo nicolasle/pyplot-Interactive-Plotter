@@ -691,14 +691,22 @@ class PlotCanvas(QWidget):
                     x_pos = getattr(ax_cfg, "xtick_position", "both")
                     show_x_labels = getattr(ax_cfg, "show_xticklabels", True)
 
-                    if x_pos == "none":
+                    # When secondary X-axis is present at top, prevent doubled top ticks
+                    has_sec_x_top = (
+                        getattr(ax_cfg, "sec_xaxis_enabled", False)
+                        and bool(getattr(ax_cfg, "sec_xaxis_fwd", "").strip())
+                        and getattr(ax_cfg, "sec_xaxis_location", "top") == "top"
+                    )
+                    effective_x_pos = "bottom" if (has_sec_x_top and x_pos == "both") else x_pos
+
+                    if effective_x_pos == "none":
                         ax.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False, labeltop=False)
-                    elif x_pos == "top":
+                    elif effective_x_pos == "top":
                         ax.tick_params(axis="x", which="both", bottom=False, top=True, labelbottom=False, labeltop=show_x_labels)
-                    elif x_pos == "both":
+                    elif effective_x_pos == "both":
                         ax.tick_params(axis="x", which="both", bottom=True, top=True, labelbottom=show_x_labels, labeltop=False)
                     else:  # "bottom"
-                        ax.tick_params(axis="x", which="both", bottom=True, top=ax_cfg.tick_top, labelbottom=show_x_labels, labeltop=False)
+                        ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=show_x_labels, labeltop=False)
 
                     # Y-Ticks visibility and position
                     y_pos = getattr(ax_cfg, "ytick_position", "left")

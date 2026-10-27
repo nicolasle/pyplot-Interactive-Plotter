@@ -1353,6 +1353,10 @@ class ConfiguratorTab(QWidget):
         self.sec_x_fwd_edit.setText(preset["fwd"])
         self.sec_x_inv_edit.setText(preset["inv"])
         self.sec_x_label_edit.setText(preset["label"])
+        # Set ticks as bottom only to prevent doubled ticks on top spine
+        idx_bottom = self.ax_xtick_pos_combo.findData("bottom")
+        if idx_bottom >= 0:
+            self.ax_xtick_pos_combo.setCurrentIndex(idx_bottom)
         self._block_signals = False
         self._on_axes_prop_changed()
 
@@ -1374,17 +1378,28 @@ class ConfiguratorTab(QWidget):
     def _on_sec_x_toggled(self, state: int):
         if self._block_signals:
             return
-        if self.sec_x_cb.isChecked() and not self.sec_x_fwd_edit.text().strip():
-            preset = SECONDARY_AXIS_PRESETS.get("Wavelength (nm) ⇄ Photon Energy (eV)")
-            if preset:
-                self._block_signals = True
-                self.sec_x_fwd_edit.setText(preset["fwd"])
-                self.sec_x_inv_edit.setText(preset["inv"])
-                self.sec_x_label_edit.setText(preset["label"])
-                idx = self.sec_x_preset_combo.findText("Wavelength (nm) ⇄ Photon Energy (eV)")
-                if idx >= 0:
-                    self.sec_x_preset_combo.setCurrentIndex(idx)
-                self._block_signals = False
+        if self.sec_x_cb.isChecked():
+            if not self.sec_x_fwd_edit.text().strip():
+                preset = SECONDARY_AXIS_PRESETS.get("Wavelength (nm) ⇄ Photon Energy (eV)")
+                if preset:
+                    self._block_signals = True
+                    self.sec_x_fwd_edit.setText(preset["fwd"])
+                    self.sec_x_inv_edit.setText(preset["inv"])
+                    self.sec_x_label_edit.setText(preset["label"])
+                    idx = self.sec_x_preset_combo.findText("Wavelength (nm) ⇄ Photon Energy (eV)")
+                    if idx >= 0:
+                        self.sec_x_preset_combo.setCurrentIndex(idx)
+                    self._block_signals = False
+            # Automatically set ticks to bottom only to prevent doubled ticks on top
+            idx_bottom = self.ax_xtick_pos_combo.findData("bottom")
+            if idx_bottom >= 0:
+                self.ax_xtick_pos_combo.setCurrentIndex(idx_bottom)
+        else:
+            # If the secondary axis is disabled later, revert ticks back to both
+            idx_both = self.ax_xtick_pos_combo.findData("both")
+            if idx_both >= 0:
+                self.ax_xtick_pos_combo.setCurrentIndex(idx_both)
+
         self._on_axes_prop_changed()
 
     def _on_sec_y_toggled(self, state: int):
