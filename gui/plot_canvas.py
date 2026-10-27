@@ -20,6 +20,7 @@ from matplotlib.text import Text
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox
 from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QPainter, QColor
 import numpy as np
 import pandas as pd
 
@@ -159,7 +160,7 @@ class PlotCanvas(QWidget):
         self.active_ax_label.setText(f"Active Subplot: ({r}, {c})")
 
     def _apply_canvas_sizing(self):
-        """Calculates and applies precise canvas and figure dimensions."""
+        """Calculates and applies precise canvas and figure dimensions with full High-DPI support."""
         if not self.cached_fig_config:
             return
 
@@ -175,43 +176,78 @@ class PlotCanvas(QWidget):
 
         mode = self.view_combo.currentData() if hasattr(self, "view_combo") else "fit"
 
-        # Determine available viewport bounds
+        # Device Pixel Ratio for High-DPI displays (e.g. 1.25, 1.5, 2.0)
+        dpr = 1.0
+        if hasattr(self, "devicePixelRatio"):
+            try:
+                dpr = float(self.devicePixelRatio())
+            except Exception:
+                dpr = 1.0
+        elif hasattr(self.canvas, "device_pixel_ratio"):
+            dpr = float(self.canvas.device_pixel_ratio or 1.0)
+        if dpr <= 0.0:
+            dpr = 1.0
+
+        # Screen Logical DPI
+        screen_dpi = float(self.logicalDpiX() if hasattr(self, "logicalDpiX") else 96.0)
+        if screen_dpi <= 30.0:
+            screen_dpi = 96.0
+
+        # Determine available viewport bounds inside scroll area
         vp_w = self.scroll_area.viewport().width() if hasattr(self, "scroll_area") else self.width()
         vp_h = self.scroll_area.viewport().height() if hasattr(self, "scroll_area") else self.height()
         if vp_w <= 30:
-            vp_w = 700
+            vp_w = max(300, self.width() - 20) if self.width() > 50 else 700
         if vp_h <= 30:
-            vp_h = 520
+            vp_h = max(200, self.height() - 80) if self.height() > 100 else 520
 
         if mode == "1:1":
-            screen_dpi = float(self.logicalDpiX() if hasattr(self, "logicalDpiX") else 96.0)
+            # True 1:1 physical size on screen based on screen DPI
             target_w = max(100, int(round(w_in * screen_dpi)))
             target_h = max(100, int(round(h_in * screen_dpi)))
-            target_dpi = screen_dpi
+            phys_w = int(round(target_w * dpr))
+            phys_h = int(round(target_h * dpr))
+            target_dpi = phys_w / w_in
+            eff_w_in = w_in
+            eff_h_in = phys_h / target_dpi
         elif mode == "fill":
-            target_w = max(100, vp_w - 6)
-            target_h = max(100, vp_h - 6)
-            target_dpi = target_w / w_in
+            # Expand to fill available viewport completely
+            target_w = max(100, vp_w - 8)
+            target_h = max(100, vp_h - 8)
+            phys_w = int(round(target_w * dpr))
+            phys_h = int(round(target_h * dpr))
+            target_dpi = screen_dpi * dpr
+            eff_w_in = phys_w / target_dpi
+            eff_h_in = phys_h / target_dpi
         else:
-            # "fit" (Default): Maintain true physical aspect ratio (w_cm : h_cm)
-            avail_w = max(100, vp_w - 24)
-            avail_h = max(100, vp_h - 24)
+            # "fit" (Default): Maintain true physical aspect ratio (w_cm : h_cm) inside viewport
+            avail_w = max(100, vp_w - 28)
+            avail_h = max(100, vp_h - 28)
             if (avail_w / avail_h) > aspect:
                 target_h = avail_h
                 target_w = int(round(target_h * aspect))
             else:
                 target_w = avail_w
                 target_h = int(round(target_w / aspect))
-            target_dpi = target_w / w_in
 
-        self.canvas.setFixedSize(target_w, target_h)
-        self.figure.set_size_inches(w_in, h_in, forward=False)
+            phys_w = int(round(target_w * dpr))
+            phys_h = int(round(target_h * dpr))
+            target_dpi = phys_w / w_in
+            eff_w_in = w_in
+            eff_h_in = phys_h / target_dpi
+
+        # Update figure inches and DPI first before setting Qt widget size
+        self.figure.set_size_inches(eff_w_in, eff_h_in, forward=False)
         self.figure.dpi = target_dpi
 
+        # Update Qt widget size
+        self.canvas.setFixedSize(target_w, target_h)
+
     def _on_view_mode_changed(self, idx: int):
-        if self.cached_fig_config:
-            self._apply_canvas_sizing()
-            self.canvas.draw_idle()
+        if self.cached_fig_config and self.cached_datasets is not None:
+            self.render(self.cached_fig_config, self.cached_datasets)
+
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -284,6 +320,7 @@ class PlotCanvas(QWidget):
 
         # Always re-enforce constrained layout engine for flawless centering
         if fig_config.tight_layout:
+            self.figure.set_layout_engine(None)
             self.figure.set_layout_engine("constrained")
         else:
             self.figure.set_layout_engine(None)
@@ -353,7 +390,7 @@ class PlotCanvas(QWidget):
                             continue
 
                         target_ax = ax_twin if (tr.twin_axis == "twinx" and ax_twin) else ax
-                        label_val = tr.label if tr.label else (tr.name or f"Trace {tr_idx+1}")
+                        label_val = tr.label.strip() if (tr.label and tr.label.strip()) else None
 
                         # Safely parse color
                         color_val = None
@@ -525,7 +562,7 @@ class PlotCanvas(QWidget):
                         except ValueError:
                             ref_color = "#ef4444"
 
-                        lbl = ref.label if ref.label else None
+                        lbl = ref.label.strip() if (ref.label and ref.label.strip()) else None
                         target_ref_ax = ax_twin if (getattr(ref, "target_axis", "primary") == "twinx" and ax_twin) else ax
 
                         if ref.type == "hline":
@@ -565,7 +602,7 @@ class PlotCanvas(QWidget):
 
                     # 3. Subplot Titles & Labels
                     if ax_cfg.title:
-                        ax.set_title(ax_cfg.title, fontsize=font_size + 1, fontweight="semibold")
+                        ax.set_title(ax_cfg.title, fontsize=font_size + 1, fontweight="bold")
                     if ax_cfg.xlabel:
                         ax.set_xlabel(ax_cfg.xlabel, fontsize=font_size)
                     if ax_cfg.ylabel:
@@ -773,6 +810,7 @@ class PlotCanvas(QWidget):
 
                             box = AnchoredOffsetbox(loc=loc_str, pad=0.0, borderpad=0.0, child=da, frameon=False)
                             box.set_zorder(100)
+                            box.set_in_layout(False)
                             ax.add_artist(box)
                         else:
                             # Font in plain black without square
@@ -782,6 +820,13 @@ class PlotCanvas(QWidget):
                             )
                             box = AnchoredOffsetbox(loc=loc_str, pad=0.0, borderpad=0.35, child=ta, frameon=False)
                             box.set_zorder(100)
+                            box.set_in_layout(False)
                             ax.add_artist(box)
 
-        self.canvas.draw_idle()
+            # Draw the figure synchronously inside the active rc_context
+            try:
+                self.canvas.draw()
+            except Exception:
+                self.canvas.draw_idle()
+
+        self.canvas.update()

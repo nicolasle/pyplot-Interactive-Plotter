@@ -10,10 +10,10 @@ from typing import Dict, Tuple, Optional
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter,
     QTabWidget, QStatusBar, QMessageBox, QFileDialog, QToolBar,
-    QLabel, QSizePolicy
+    QLabel, QSizePolicy, QApplication, QLineEdit, QAbstractSpinBox
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import Qt, QLocale, QObject, QEvent
+from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
 
 from core.models import FigureConfig, Dataset, TraceConfig
 from core.data_loader import sniff_file_parameters, parse_file
@@ -29,6 +29,27 @@ from gui.tabs.export_tab import ExportTab
 from gui.styles import DARK_THEME
 
 
+class NumericInputFilter(QObject):
+    """
+    Translates comma key presses into periods for numeric spin boxes and
+    limit fields, ensuring seamless input on European/French keyboard layouts.
+    """
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress and event.text() == ",":
+            if isinstance(obj, QLineEdit):
+                parent = obj.parent()
+                if isinstance(parent, QAbstractSpinBox) or obj.objectName() == "numeric_lim_edit":
+                    new_event = QKeyEvent(
+                        event.type(),
+                        Qt.Key.Key_Period,
+                        event.modifiers(),
+                        "."
+                    )
+                    QApplication.sendEvent(obj, new_event)
+                    return True
+        return super().eventFilter(obj, event)
+
+
 class MainWindow(QMainWindow):
     """
     Primary Application Window.
@@ -36,6 +57,16 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         super().__init__()
+        # Force C locale globally so numbers always format with decimal point (.)
+        QLocale.setDefault(QLocale.c())
+        self.setLocale(QLocale.c())
+
+        app_inst = QApplication.instance()
+        if app_inst and not getattr(app_inst, "_decimal_filter_installed", False):
+            self._decimal_filter = NumericInputFilter(app_inst)
+            app_inst.installEventFilter(self._decimal_filter)
+            app_inst._decimal_filter_installed = True
+
         self.setWindowTitle("Pyplot Interactive Plotter - Scientific Publication Suite")
         self.resize(1380, 840)
 

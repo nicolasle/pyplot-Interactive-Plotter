@@ -308,36 +308,42 @@ class ConfiguratorTab(QWidget):
 
         scale_layout.addWidget(QLabel("X-Min:"), 2, 0)
         self.ax_xmin_edit = QLineEdit()
+        self.ax_xmin_edit.setObjectName("numeric_lim_edit")
         self.ax_xmin_edit.setPlaceholderText("Auto")
         self.ax_xmin_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_xmin_edit, 2, 1)
 
         scale_layout.addWidget(QLabel("X-Max:"), 2, 2)
         self.ax_xmax_edit = QLineEdit()
+        self.ax_xmax_edit.setObjectName("numeric_lim_edit")
         self.ax_xmax_edit.setPlaceholderText("Auto")
         self.ax_xmax_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_xmax_edit, 2, 3)
 
         scale_layout.addWidget(QLabel("Y-Min:"), 3, 0)
         self.ax_ymin_edit = QLineEdit()
+        self.ax_ymin_edit.setObjectName("numeric_lim_edit")
         self.ax_ymin_edit.setPlaceholderText("Auto")
         self.ax_ymin_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_ymin_edit, 3, 1)
 
         scale_layout.addWidget(QLabel("Y-Max:"), 3, 2)
         self.ax_ymax_edit = QLineEdit()
+        self.ax_ymax_edit.setObjectName("numeric_lim_edit")
         self.ax_ymax_edit.setPlaceholderText("Auto")
         self.ax_ymax_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_ymax_edit, 3, 3)
 
         scale_layout.addWidget(QLabel("Twin-Y Min:"), 4, 0)
         self.ax_y2min_edit = QLineEdit()
+        self.ax_y2min_edit.setObjectName("numeric_lim_edit")
         self.ax_y2min_edit.setPlaceholderText("Auto")
         self.ax_y2min_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_y2min_edit, 4, 1)
 
         scale_layout.addWidget(QLabel("Twin-Y Max:"), 4, 2)
         self.ax_y2max_edit = QLineEdit()
+        self.ax_y2max_edit.setObjectName("numeric_lim_edit")
         self.ax_y2max_edit.setPlaceholderText("Auto")
         self.ax_y2max_edit.textChanged.connect(self._on_axes_prop_changed)
         scale_layout.addWidget(self.ax_y2max_edit, 4, 3)
@@ -1278,7 +1284,7 @@ class ConfiguratorTab(QWidget):
         ax_cfg.aspect = self.ax_aspect_combo.currentData() or "auto"
 
         def parse_lim(text: str) -> Optional[float]:
-            text = text.strip()
+            text = text.strip().replace(",", ".")
             if not text:
                 return None
             try:

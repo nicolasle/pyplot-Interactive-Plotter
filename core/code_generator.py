@@ -192,8 +192,8 @@ def generate_python_code(
                     style_kwargs = []
                     if tr.color and tr.color != "auto":
                         style_kwargs.append(f'color="{tr.color}"')
-                    if tr.label:
-                        style_kwargs.append(f'label=r"{tr.label}"')
+                    if tr.label and tr.label.strip():
+                        style_kwargs.append(f'label=r"{tr.label.strip()}"')
                     if tr.alpha < 1.0:
                         style_kwargs.append(f'alpha={tr.alpha}')
 
@@ -296,8 +296,8 @@ def generate_python_code(
                 ref_kwargs = [f'color="{ref.color}"', f'linestyle="{ref.linestyle}"', f'linewidth={ref.linewidth}']
                 if ref.alpha < 1.0:
                     ref_kwargs.append(f'alpha={ref.alpha}')
-                if ref.label:
-                    ref_kwargs.append(f'label=r"{ref.label}"')
+                if ref.label and ref.label.strip():
+                    ref_kwargs.append(f'label=r"{ref.label.strip()}"')
                 kwargs_str = ", ".join(ref_kwargs)
                 target_ref = "ax_twin" if (getattr(ref, "target_axis", "primary") == "twinx" and has_twinx) else "ax"
 
@@ -437,12 +437,14 @@ def generate_python_code(
                     lines.append(f'da.add_artist(Text({side_pt / 2.0}, {side_pt / 2.0}, "{lbl}", color="white", fontsize={lbl_size}, fontweight="bold", va="center", ha="center"))')
                     lines.append(f'panel_box = AnchoredOffsetbox(loc="{loc_str}", pad=0.0, borderpad=0.0, child=da, frameon=False)')
                     lines.append('panel_box.set_zorder(100)')
+                    lines.append('panel_box.set_in_layout(False)')
                     lines.append('ax.add_artist(panel_box)')
                 else:
                     lines.append('# Panel label: plain black font')
                     lines.append(f'ta = TextArea("{lbl}", textprops=dict(color="black", fontweight="bold", fontsize={lbl_size}))')
                     lines.append(f'panel_box = AnchoredOffsetbox(loc="{loc_str}", pad=0.0, borderpad=0.35, child=ta, frameon=False)')
                     lines.append('panel_box.set_zorder(100)')
+                    lines.append('panel_box.set_in_layout(False)')
                     lines.append('ax.add_artist(panel_box)')
 
             lines.append('')

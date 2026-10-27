@@ -235,6 +235,10 @@ class PlotTab(QWidget):
         idx = self.preset_combo.findText(c.preset_name)
         if idx >= 0:
             self.preset_combo.setCurrentIndex(idx)
+            if c.preset_name in PUBLICATION_PRESETS:
+                self.preset_desc.setText(PUBLICATION_PRESETS[c.preset_name].get("description", ""))
+            else:
+                self.preset_desc.setText("Custom layout settings.")
 
         self._block_signals = False
 
@@ -258,6 +262,13 @@ class PlotTab(QWidget):
             idx = self.style_combo.findText(p.get("style", "default"))
             if idx >= 0:
                 self.style_combo.setCurrentIndex(idx)
+
+            self.tight_layout_cb.setChecked(p.get("tight_layout", True))
+
+            # Apply tick direction to all subplots if specified
+            tick_dir = p.get("tick_direction", "in")
+            for ax_cfg in self.fig_config.axes.values():
+                ax_cfg.tick_direction = tick_dir
 
             self.preset_desc.setText(p.get("description", ""))
             self.fig_config.preset_name = preset_name
