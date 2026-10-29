@@ -94,6 +94,8 @@ def generate_python_code(
             fp = d.filepath.replace('\\', '/')
             if d.data_type == "2d_matrix" and d.filepath.endswith((".npy", ".npz")):
                 lines.append(f'{var_name} = np.load(r"{fp}")')
+                if d.meta and d.meta.get("transpose", False):
+                    lines.append(f'{var_name} = {var_name}.T')
             elif d.data_type == "2d_matrix":
                 delim = d.meta.get("delimiter", None)
                 if delim == r"\s+":
@@ -102,6 +104,8 @@ def generate_python_code(
                     lines.append(f'{var_name} = np.loadtxt(r"{fp}", delimiter="{delim}")')
                 else:
                     lines.append(f'{var_name} = np.loadtxt(r"{fp}")')
+                if d.meta and d.meta.get("transpose", False):
+                    lines.append(f'{var_name} = {var_name}.T')
             else:
                 # 1D Table
                 sep_str = d.meta.get("delimiter", ",")
@@ -118,9 +122,42 @@ def generate_python_code(
                     args.append('engine="python"')
                 
                 lines.append(f'{var_name} = pd.read_csv({", ".join(args)})')
-                if not has_header and d.df is not None:
+                # Clean comment prefixes or extra tokens in header if present
+                lines.append(f'if len({var_name}.columns) > 1 and str({var_name}.columns[0]).strip() in ["#", "%", "//", ";"]:')
+                lines.append(f'    if {var_name}.iloc[:, -1].isna().all():')
+                lines.append(f'        cols = list({var_name}.columns[1:])')
+                lines.append(f'        {var_name} = {var_name}.iloc[:, :-1]')
+                lines.append(f'        {var_name}.columns = cols')
+                lines.append(f'    else:')
+                lines.append(f'        {var_name}.columns = [{var_name}.columns[0].lstrip("#%/;! ")] + list({var_name}.columns[1:])')
+                lines.append(f'elif len({var_name}.columns) > 0:')
+                lines.append(f'    for p in ["#", "%", "//", ";"]:')
+                lines.append(f'        if str({var_name}.columns[0]).startswith(p):')
+                lines.append(f'            {var_name}.columns = [{var_name}.columns[0][len(p):].strip()] + list({var_name}.columns[1:])')
+                if d.meta and d.meta.get("transpose", False):
+                    lines.append(f'# Transpose data')
+                    if d.meta.get("transpose_header", False):
+                        lines.append(f'{var_name} = {var_name}.T.copy()')
+                        lines.append(f'if len({var_name}) > 1:')
+                        lines.append(f'    {var_name}.columns = [str(c).strip() for c in {var_name}.iloc[0]]')
+                        lines.append(f'    {var_name} = {var_name}.iloc[1:].reset_index(drop=True)')
+                    else:
+                        lines.append(f'{var_name} = {var_name}.T.copy()')
+                        lines.append(f'{var_name}.columns = [f"Col {{i}}" for i in range({var_name}.shape[1])]')
+                        lines.append(f'{var_name} = {var_name}.reset_index(drop=True)')
+                    lines.append(f'for _c in {var_name}.columns:')
+                    lines.append(f'    try:')
+                    lines.append(f'        {var_name}[_c] = pd.to_numeric({var_name}[_c])')
+                    lines.append(f'    except Exception:')
+                    lines.append(f'        pass')
+                elif not has_header and d.df is not None:
                     col_names = [f"Col {i}" for i in range(d.df.shape[1])]
                     lines.append(f'{var_name}.columns = {col_names}')
+
+                if d.df is not None:
+                    expected_cols = list(d.df.columns)
+                    lines.append(f'if list({var_name}.columns) != {expected_cols} and len({var_name}.columns) == {len(expected_cols)}:')
+                    lines.append(f'    {var_name}.columns = {expected_cols}')
         else:
             # Inline mock or fallback
             if d.data_type == "1d_table":
@@ -246,7 +283,16 @@ def generate_python_code(
                         lines.append(f'{target_ax}.step({x_expr}, {y_expr}{", " + kwargs_str if kwargs_str else ""})')
 
                     elif tr.plot_type == "fill_between":
-                        kwargs_str = ", ".join(style_kwargs)
+                        fb_kwargs = []
+                        if tr.color and tr.color != "auto":
+                            fb_kwargs.append(f'color="{tr.color}"')
+                        if tr.label and tr.label.strip():
+                            fb_kwargs.append(f'label=r"{tr.label.strip()}"')
+                        fb_alpha = round(tr.alpha * 0.4, 3)
+                        fb_kwargs.append(f'alpha={fb_alpha}')
+                        if tr.zorder != 2:
+                            fb_kwargs.append(f'zorder={tr.zorder}')
+                        kwargs_str = ", ".join(fb_kwargs)
                         lines.append(f'{target_ax}.fill_between({x_expr}, {y_expr}{", " + kwargs_str if kwargs_str else ""})')
 
                     elif tr.plot_type == "bar":
@@ -347,8 +393,13 @@ def generate_python_code(
             elif ax_cfg.ylim_max is not None:
                 lines.append(f'ax.set_ylim(top={ax_cfg.ylim_max})')
 
-            if has_twinx and ax_cfg.y2lim_min is not None and ax_cfg.y2lim_max is not None:
-                lines.append(f'ax_twin.set_ylim({ax_cfg.y2lim_min}, {ax_cfg.y2lim_max})')
+            if has_twinx:
+                if ax_cfg.y2lim_min is not None and ax_cfg.y2lim_max is not None:
+                    lines.append(f'ax_twin.set_ylim({ax_cfg.y2lim_min}, {ax_cfg.y2lim_max})')
+                elif ax_cfg.y2lim_min is not None:
+                    lines.append(f'ax_twin.set_ylim(bottom={ax_cfg.y2lim_min})')
+                elif ax_cfg.y2lim_max is not None:
+                    lines.append(f'ax_twin.set_ylim(top={ax_cfg.y2lim_max})')
 
             # Grids
             if ax_cfg.grid_major:
@@ -402,6 +453,7 @@ def generate_python_code(
                 lbl = getattr(ax_cfg, "sec_xaxis_label", "").strip()
                 if lbl:
                     lines.append(f'secax_x.set_xlabel(r"{lbl}")')
+                lines.append(f'secax_x.tick_params(direction="{ax_cfg.tick_direction}")')
 
             if getattr(ax_cfg, "sec_yaxis_enabled", False) and getattr(ax_cfg, "sec_yaxis_fwd", "").strip():
                 fwd_expr = ax_cfg.sec_yaxis_fwd.strip()
@@ -411,11 +463,18 @@ def generate_python_code(
                 lbl = getattr(ax_cfg, "sec_yaxis_label", "").strip()
                 if lbl:
                     lines.append(f'secax_y.set_ylabel(r"{lbl}")')
+                lines.append(f'secax_y.tick_params(direction="{ax_cfg.tick_direction}")')
 
             # Legend
             if ax_cfg.show_legend:
+                lines.append('handles, labels = ax.get_legend_handles_labels()')
+                if has_twinx:
+                    lines.append('h2, l2 = ax_twin.get_legend_handles_labels()')
+                    lines.append('handles += h2')
+                    lines.append('labels += l2')
+                lines.append('if handles:')
                 loc_arg = f'loc="{ax_cfg.legend_loc}"' if ax_cfg.legend_loc != "best" else 'loc="best"'
-                lines.append(f'ax.legend({loc_arg}, frameon={ax_cfg.legend_frame}, ncol={ax_cfg.legend_ncol})')
+                lines.append(f'    ax.legend(handles, labels, {loc_arg}, frameon={ax_cfg.legend_frame}, ncol={ax_cfg.legend_ncol})')
 
             # Panel Label (Publication Tag, e.g. a, b, c...)
             if getattr(ax_cfg, "show_panel_label", False) and ax_cfg.panel_label:

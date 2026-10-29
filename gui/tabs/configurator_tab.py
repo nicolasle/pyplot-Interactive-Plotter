@@ -6,15 +6,19 @@ provides a full editor to add and remove reference lines/baselines,
 and configures axes labels, limits, scales, grids, and legends.
 """
 
+import copy
+import re
+import uuid
 from typing import Dict, Optional, Any, List
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QPushButton, QListWidget, QListWidgetItem, QGroupBox,
     QLineEdit, QDoubleSpinBox, QSpinBox, QCheckBox, QColorDialog,
-    QSplitter, QTabWidget, QScrollArea, QGridLayout, QMessageBox
+    QSplitter, QTabWidget, QScrollArea, QGridLayout, QMessageBox,
+    QMenu
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QShortcut, QKeySequence
 
 from core.models import FigureConfig, AxisConfig, TraceConfig, ReferenceLineConfig, Dataset
 from core.presets import SECONDARY_AXIS_PRESETS
@@ -85,23 +89,37 @@ class ConfiguratorTab(QWidget):
         action_row = QHBoxLayout()
         add_1d_btn = QPushButton("+ 1D Trace")
         add_1d_btn.setObjectName("primaryBtn")
+        add_1d_btn.setToolTip("Add a new 1D line/scatter trace to the active subplot")
         add_1d_btn.clicked.connect(self._add_1d_trace)
 
         add_2d_btn = QPushButton("+ 2D Map (Imshow)")
+        add_2d_btn.setToolTip("Add a 2D intensity map / heatmap to the active subplot")
         add_2d_btn.clicked.connect(self._add_2d_trace)
 
-        del_trace_btn = QPushButton("Delete Selected")
-        del_trace_btn.setStyleSheet("color: #f87171;")
-        del_trace_btn.clicked.connect(self._delete_active_trace)
+        self.dup_trace_btn = QPushButton("Duplicate Selected")
+        self.dup_trace_btn.setToolTip("Duplicate the selected line / data channel with all its style, column, and axis settings (Ctrl+D)")
+        self.dup_trace_btn.clicked.connect(self._duplicate_active_trace)
+
+        self.del_trace_btn = QPushButton("Delete Selected")
+        self.del_trace_btn.setStyleSheet("color: #f87171;")
+        self.del_trace_btn.setToolTip("Delete the selected line / data channel from this subplot")
+        self.del_trace_btn.clicked.connect(self._delete_active_trace)
 
         action_row.addWidget(add_1d_btn)
         action_row.addWidget(add_2d_btn)
-        action_row.addWidget(del_trace_btn)
+        action_row.addWidget(self.dup_trace_btn)
+        action_row.addWidget(self.del_trace_btn)
         action_row.addStretch()
         list_layout.addLayout(action_row)
 
         self.traces_list = QListWidget()
         self.traces_list.currentRowChanged.connect(self._on_trace_selection_changed)
+        self.traces_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.traces_list.customContextMenuRequested.connect(self._show_trace_context_menu)
+
+        self.dup_trace_shortcut = QShortcut(QKeySequence("Ctrl+D"), self.traces_list)
+        self.dup_trace_shortcut.activated.connect(self._duplicate_active_trace)
+
         list_layout.addWidget(self.traces_list)
         splitter.addWidget(list_box)
 
@@ -145,19 +163,26 @@ class ConfiguratorTab(QWidget):
         add_span_btn = QPushButton("+ Shaded Span")
         add_span_btn.clicked.connect(lambda: self._add_ref_line("hspan"))
 
-        del_ref_btn = QPushButton("Delete Selected Baseline")
-        del_ref_btn.setStyleSheet("color: #f87171; font-weight: bold;")
-        del_ref_btn.clicked.connect(self._delete_active_ref_line)
+        self.dup_ref_btn = QPushButton("Duplicate Selected")
+        self.dup_ref_btn.setToolTip("Duplicate the selected baseline or reference line")
+        self.dup_ref_btn.clicked.connect(self._duplicate_active_ref_line)
+
+        self.del_ref_btn = QPushButton("Delete Selected Baseline")
+        self.del_ref_btn.setStyleSheet("color: #f87171; font-weight: bold;")
+        self.del_ref_btn.clicked.connect(self._delete_active_ref_line)
 
         ref_btn_row.addWidget(add_hline_btn)
         ref_btn_row.addWidget(add_vline_btn)
         ref_btn_row.addWidget(add_span_btn)
-        ref_btn_row.addWidget(del_ref_btn)
+        ref_btn_row.addWidget(self.dup_ref_btn)
+        ref_btn_row.addWidget(self.del_ref_btn)
         ref_btn_row.addStretch()
         ref_list_layout.addLayout(ref_btn_row)
 
         self.ref_list = QListWidget()
         self.ref_list.currentRowChanged.connect(self._on_ref_selection_changed)
+        self.ref_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ref_list.customContextMenuRequested.connect(self._show_ref_context_menu)
         ref_list_layout.addWidget(self.ref_list)
         ref_splitter.addWidget(ref_list_box)
 
@@ -925,10 +950,14 @@ class ConfiguratorTab(QWidget):
 
         self._block_signals = False
 
-    def _refresh_traces_list(self):
+    def _refresh_traces_list(self, select_trace_id: Optional[str] = None):
         ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        target_id = select_trace_id if select_trace_id is not None else self.active_trace_id
+
+        self.traces_list.blockSignals(True)
         self.traces_list.clear()
 
+        select_row = 0
         for idx, tr in enumerate(ax_cfg.traces):
             d = self.datasets.get(tr.dataset_id)
             d_name = d.name if d else "No Data"
@@ -938,17 +967,37 @@ class ConfiguratorTab(QWidget):
             item = QListWidgetItem(f"{vis_badge} {axis_badge} ({tr.plot_type}) {label} [{d_name}]")
             item.setData(Qt.UserRole, tr.id)
             self.traces_list.addItem(item)
+            if target_id and tr.id == target_id:
+                select_row = idx
+
+        self.traces_list.blockSignals(False)
 
         if self.traces_list.count() > 0:
-            self.traces_list.setCurrentRow(0)
+            self.traces_list.setCurrentRow(select_row)
+            item = self.traces_list.item(select_row)
+            if item:
+                self.active_trace_id = item.data(Qt.UserRole)
+                self._load_trace_into_editor(self.active_trace_id)
+            if hasattr(self, "dup_trace_btn"):
+                self.dup_trace_btn.setEnabled(True)
+            if hasattr(self, "del_trace_btn"):
+                self.del_trace_btn.setEnabled(True)
         else:
             self.active_trace_id = None
+            if hasattr(self, "dup_trace_btn"):
+                self.dup_trace_btn.setEnabled(False)
+            if hasattr(self, "del_trace_btn"):
+                self.del_trace_btn.setEnabled(False)
             self._clear_trace_editor()
 
-    def _refresh_ref_list(self):
+    def _refresh_ref_list(self, select_ref_id: Optional[str] = None):
         ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        target_id = select_ref_id if select_ref_id is not None else self.active_ref_id
+
+        self.ref_list.blockSignals(True)
         self.ref_list.clear()
 
+        select_row = 0
         for idx, ref in enumerate(ax_cfg.ref_lines):
             type_badge = ref.type.upper()
             axis_badge = " [TwinX]" if getattr(ref, "target_axis", "primary") == "twinx" else ""
@@ -961,11 +1010,27 @@ class ConfiguratorTab(QWidget):
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, ref.id)
             self.ref_list.addItem(item)
+            if target_id and ref.id == target_id:
+                select_row = idx
+
+        self.ref_list.blockSignals(False)
 
         if self.ref_list.count() > 0:
-            self.ref_list.setCurrentRow(0)
+            self.ref_list.setCurrentRow(select_row)
+            item = self.ref_list.item(select_row)
+            if item:
+                self.active_ref_id = item.data(Qt.UserRole)
+                self._load_ref_into_editor(self.active_ref_id)
+            if hasattr(self, "dup_ref_btn"):
+                self.dup_ref_btn.setEnabled(True)
+            if hasattr(self, "del_ref_btn"):
+                self.del_ref_btn.setEnabled(True)
         else:
             self.active_ref_id = None
+            if hasattr(self, "dup_ref_btn"):
+                self.dup_ref_btn.setEnabled(False)
+            if hasattr(self, "del_ref_btn"):
+                self.del_ref_btn.setEnabled(False)
 
     def _clear_trace_editor(self):
         self._block_signals = True
@@ -1169,12 +1234,65 @@ class ConfiguratorTab(QWidget):
         self.ref_list.setCurrentRow(len(ax_cfg.ref_lines) - 1)
         self.config_changed.emit()
 
+    def _duplicate_active_ref_line(self):
+        if not self.active_ref_id:
+            return
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        curr_idx = -1
+        curr_ref = None
+        for idx, r in enumerate(ax_cfg.ref_lines):
+            if r.id == self.active_ref_id:
+                curr_idx = idx
+                curr_ref = r
+                break
+
+        if not curr_ref:
+            return
+
+        new_ref = copy.deepcopy(curr_ref)
+        new_ref.id = str(uuid.uuid4())[:8]
+
+        # Duplicate label cleanly
+        if curr_ref.label:
+            m = re.match(r"^(.*?)(?: \(Copy(?: (\d+))?\))?$", curr_ref.label)
+            prefix = m.group(1) if m else curr_ref.label
+            cand = f"{prefix} (Copy)"
+            counter = 2
+            existing = [r.label for r in ax_cfg.ref_lines if r.label]
+            while cand in existing:
+                cand = f"{prefix} (Copy {counter})"
+                counter += 1
+            new_ref.label = cand
+
+        ax_cfg.ref_lines.insert(curr_idx + 1, new_ref)
+        self._refresh_ref_list(select_ref_id=new_ref.id)
+        self.config_changed.emit()
+
+    def _show_ref_context_menu(self, pos):
+        item = self.ref_list.itemAt(pos)
+        if not item:
+            return
+        self.ref_list.setCurrentItem(item)
+        menu = QMenu(self)
+        dup_act = menu.addAction("📋 Duplicate Baseline / Reference Line")
+        dup_act.triggered.connect(self._duplicate_active_ref_line)
+        del_act = menu.addAction("🗑 Delete Baseline / Reference Line")
+        del_act.triggered.connect(self._delete_active_ref_line)
+        menu.exec(self.ref_list.mapToGlobal(pos))
+
     def _delete_active_ref_line(self):
         if not self.active_ref_id:
             return
         ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        del_idx = next((i for i, r in enumerate(ax_cfg.ref_lines) if r.id == self.active_ref_id), -1)
         ax_cfg.ref_lines = [r for r in ax_cfg.ref_lines if r.id != self.active_ref_id]
-        self._refresh_ref_list()
+
+        next_id = None
+        if ax_cfg.ref_lines:
+            new_idx = min(max(0, del_idx), len(ax_cfg.ref_lines) - 1)
+            next_id = ax_cfg.ref_lines[new_idx].id
+
+        self._refresh_ref_list(select_ref_id=next_id)
         self.config_changed.emit()
 
     def _on_ref_selection_changed(self, row: int):
@@ -1458,8 +1576,7 @@ class ConfiguratorTab(QWidget):
             label=f"Channel {len(ax_cfg.traces)+1}"
         )
         ax_cfg.traces.append(new_tr)
-        self._refresh_traces_list()
-        self.traces_list.setCurrentRow(len(ax_cfg.traces) - 1)
+        self._refresh_traces_list(select_trace_id=new_tr.id)
         self.config_changed.emit()
 
     def _add_2d_trace(self):
@@ -1475,14 +1592,99 @@ class ConfiguratorTab(QWidget):
             label=""
         )
         ax_cfg.traces.append(new_tr)
-        self._refresh_traces_list()
-        self.traces_list.setCurrentRow(len(ax_cfg.traces) - 1)
+        self._refresh_traces_list(select_trace_id=new_tr.id)
+        self.config_changed.emit()
+
+    def _duplicate_active_trace(self):
+        """Duplicates the currently selected line / data channel in the active subplot."""
+        if not self.active_trace_id:
+            return
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+
+        curr_idx = -1
+        curr_tr = None
+        for idx, t in enumerate(ax_cfg.traces):
+            if t.id == self.active_trace_id:
+                curr_idx = idx
+                curr_tr = t
+                break
+
+        if not curr_tr:
+            return
+
+        new_tr = copy.deepcopy(curr_tr)
+        new_tr.id = str(uuid.uuid4())[:8]
+
+        # Duplicate name smartly
+        def _get_copy_name(base: str, existing: List[str]) -> str:
+            if not base:
+                return ""
+            m = re.match(r"^(.*?)(?: \(Copy(?: (\d+))?\))?$", base)
+            prefix = m.group(1) if m else base
+            cand = f"{prefix} (Copy)"
+            counter = 2
+            while cand in existing:
+                cand = f"{prefix} (Copy {counter})"
+                counter += 1
+            return cand
+
+        existing_names = [t.name for t in ax_cfg.traces if t.name]
+        new_tr.name = _get_copy_name(curr_tr.name, existing_names)
+
+        if curr_tr.label:
+            existing_labels = [t.label for t in ax_cfg.traces if t.label]
+            new_tr.label = _get_copy_name(curr_tr.label, existing_labels)
+        else:
+            new_tr.label = ""
+
+        # Insert directly after the source trace
+        ax_cfg.traces.insert(curr_idx + 1, new_tr)
+
+        # Refresh list and select the duplicate
+        self._refresh_traces_list(select_trace_id=new_tr.id)
         self.config_changed.emit()
 
     def _delete_active_trace(self):
         if not self.active_trace_id:
             return
         ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        del_idx = next((i for i, t in enumerate(ax_cfg.traces) if t.id == self.active_trace_id), -1)
         ax_cfg.traces = [t for t in ax_cfg.traces if t.id != self.active_trace_id]
-        self._refresh_traces_list()
+
+        next_id = None
+        if ax_cfg.traces:
+            new_idx = min(max(0, del_idx), len(ax_cfg.traces) - 1)
+            next_id = ax_cfg.traces[new_idx].id
+
+        self._refresh_traces_list(select_trace_id=next_id)
         self.config_changed.emit()
+
+    def _show_trace_context_menu(self, pos):
+        item = self.traces_list.itemAt(pos)
+        if not item:
+            return
+        self.traces_list.setCurrentItem(item)
+        menu = QMenu(self)
+
+        dup_act = menu.addAction("📋 Duplicate Line / Channel (Ctrl+D)")
+        dup_act.triggered.connect(self._duplicate_active_trace)
+
+        del_act = menu.addAction("🗑 Delete Line / Channel")
+        del_act.triggered.connect(self._delete_active_trace)
+
+        menu.addSeparator()
+
+        vis_act = menu.addAction("👁 Toggle Visibility")
+        vis_act.triggered.connect(self._toggle_active_trace_visibility)
+
+        menu.exec(self.traces_list.mapToGlobal(pos))
+
+    def _toggle_active_trace_visibility(self):
+        if not self.active_trace_id:
+            return
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        tr = next((t for t in ax_cfg.traces if t.id == self.active_trace_id), None)
+        if tr:
+            tr.visible = not tr.visible
+            self.tr_visible_cb.setChecked(tr.visible)
+            self._on_trace_prop_changed()

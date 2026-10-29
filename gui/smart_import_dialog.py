@@ -155,6 +155,23 @@ class SmartImportDialog(QDialog):
         type_layout.addWidget(self.type_2d_radio)
         ctrl_layout.addLayout(type_layout)
 
+        # Transpose controls
+        t_box = QVBoxLayout()
+        t_box.setSpacing(3)
+        self.transpose_cb = QCheckBox("Transpose Data (Swap rows ↔ columns)")
+        self.transpose_cb.setToolTip("Transpose imported data so rows become columns and columns become rows")
+        self.transpose_cb.stateChanged.connect(self._on_transpose_toggled)
+
+        self.transpose_header_cb = QCheckBox("Use first row of transposed data as column headers")
+        self.transpose_header_cb.setToolTip("Promote the first row of the transposed data to column header names")
+        self.transpose_header_cb.setStyleSheet("margin-left: 20px; color: #94a3b8;")
+        self.transpose_header_cb.setEnabled(False)
+        self.transpose_header_cb.stateChanged.connect(self._on_params_changed)
+
+        t_box.addWidget(self.transpose_cb)
+        t_box.addWidget(self.transpose_header_cb)
+        ctrl_layout.addLayout(t_box)
+
         # Dataset Name
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Dataset Name:"))
@@ -272,6 +289,11 @@ class SmartImportDialog(QDialog):
         else:
             self.type_1d_radio.setChecked(True)
 
+        # Transpose
+        self.transpose_cb.setChecked(p.get("transpose", False))
+        self.transpose_header_cb.setChecked(p.get("transpose_header", False))
+        self.transpose_header_cb.setEnabled(p.get("transpose", False))
+
         # Status text
         header_desc = "Header detected" if p.get("has_header") else "No header (auto-named)"
         delim_desc = p.get("delimiter")
@@ -315,8 +337,20 @@ class SmartImportDialog(QDialog):
             "comment": comment,
             "decimal": self.decimal_combo.currentData(),
             "is_2d_matrix": self.type_2d_radio.isChecked(),
+            "transpose": self.transpose_cb.isChecked(),
+            "transpose_header": self.transpose_header_cb.isChecked(),
             "encoding": self.sniffed_params.get("encoding", "utf-8")
         }
+
+    def _on_transpose_toggled(self, state):
+        is_transposed = self.transpose_cb.isChecked()
+        self.transpose_header_cb.setEnabled(is_transposed)
+        # When enabling transpose on a file where no header was detected, default transpose_header to True
+        if is_transposed and not self.header_cb.isChecked():
+            self.transpose_header_cb.setChecked(True)
+        elif not is_transposed:
+            self.transpose_header_cb.setChecked(False)
+        self._on_params_changed()
 
     def _on_params_changed(self):
         """Called immediately whenever any control is altered."""
@@ -370,6 +404,8 @@ class SmartImportDialog(QDialog):
                     self.preview_table.setItem(r, c, item)
 
             mode_str = "2D Matrix Grid" if params["is_2d_matrix"] else "1D Column Table"
+            if params.get("transpose", False):
+                mode_str += " (Transposed)"
             self.preview_status_label.setText(
                 f"Successfully parsed as {mode_str} ({len(df.columns)} columns, {len(df)} preview rows shown)"
             )

@@ -299,6 +299,81 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
     }
 
 
+def transpose_parsed_data(
+    df: Optional[pd.DataFrame],
+    matrix: Optional[np.ndarray],
+    is_2d_matrix: bool = False,
+    has_header: bool = False,
+    promote_first_row: bool = False
+) -> Tuple[Optional[pd.DataFrame], Optional[np.ndarray]]:
+    """
+    Transposes the parsed DataFrame and/or 2D matrix.
+    Handles column names and numeric conversions appropriately.
+    """
+    if df is None or df.empty:
+        return df, matrix
+
+    if is_2d_matrix:
+        if matrix is not None:
+            new_matrix = matrix.T
+            new_df = pd.DataFrame(new_matrix)
+            new_df.columns = [f"Col {i}" for i in range(new_df.shape[1])]
+            return new_df, new_matrix
+        else:
+            new_df = df.T.copy()
+            new_df.columns = [f"Col {i}" for i in range(new_df.shape[1])]
+            new_df = new_df.reset_index(drop=True)
+            try:
+                new_matrix = new_df.select_dtypes(include=[np.number]).to_numpy()
+            except Exception:
+                new_matrix = None
+            return new_df, new_matrix
+
+    # If file was parsed with has_header=True and has > 1 column, and user didn't explicitly request row 0 promotion:
+    if has_header and len(df.columns) > 1 and not promote_first_row:
+        first_col = df.columns[0]
+        try:
+            df_t = df.set_index(first_col).T.reset_index()
+            df_t.columns.name = None
+            df_t = df_t.rename(columns={"index": str(first_col)})
+            for c in df_t.columns:
+                try:
+                    df_t[c] = pd.to_numeric(df_t[c])
+                except (ValueError, TypeError):
+                    pass
+            return df_t, None
+        except Exception:
+            pass
+
+    # Generic 1D table transpose
+    df_t = df.T.copy()
+    if promote_first_row and len(df_t) > 1:
+        raw_headers = [str(c).strip() for c in df_t.iloc[0]]
+        seen = {}
+        unique_headers = []
+        for h in raw_headers:
+            base = h if h else "Col"
+            if base in seen:
+                seen[base] += 1
+                unique_headers.append(f"{base}_{seen[base]}")
+            else:
+                seen[base] = 0
+                unique_headers.append(base)
+        df_t = df_t.iloc[1:].copy()
+        df_t.columns = unique_headers
+    else:
+        df_t.columns = [f"Col {i}" if isinstance(c, (int, np.integer)) else str(c) for i, c in enumerate(df_t.columns)]
+
+    df_t = df_t.reset_index(drop=True)
+    for col in df_t.columns:
+        try:
+            df_t[col] = pd.to_numeric(df_t[col])
+        except (ValueError, TypeError):
+            pass
+
+    return df_t, None
+
+
 def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = None) -> Tuple[Optional[pd.DataFrame], Optional[np.ndarray], str]:
     """
     Parses the file using given parameters.
@@ -319,10 +394,14 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
             
             if arr.ndim == 1:
                 df = pd.DataFrame({"Data": arr})
+                if params.get("transpose", False):
+                    df, _ = transpose_parsed_data(df, None, is_2d_matrix=False, has_header=False)
                 return df, None, ""
             elif arr.ndim == 2:
                 df = pd.DataFrame(arr)
                 df.columns = [f"Col {i}" for i in range(df.shape[1])]
+                if params.get("transpose", False):
+                    df, arr = transpose_parsed_data(df, arr, is_2d_matrix=True, has_header=False)
                 return df, arr, ""
             else:
                 return None, None, f"Unsupported NumPy array dimensions: {arr.ndim}D"
@@ -338,6 +417,13 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
             df = pd.read_excel(filepath, skiprows=skiprows, header=header, nrows=max_rows)
             if not has_header:
                 df.columns = [f"Col {i}" for i in range(df.shape[1])]
+            if params.get("transpose", False):
+                df, _ = transpose_parsed_data(
+                    df, None,
+                    is_2d_matrix=params.get("is_2d_matrix", False),
+                    has_header=has_header,
+                    promote_first_row=params.get("transpose_header", False)
+                )
             return df, None, ""
         except Exception as e:
             return None, None, f"Failed to load Excel file: {e}"
@@ -401,6 +487,14 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
                 matrix = df.select_dtypes(include=[np.number]).to_numpy()
             except Exception:
                 pass
+
+        if params.get("transpose", False):
+            df, matrix = transpose_parsed_data(
+                df, matrix,
+                is_2d_matrix=is_2d_matrix,
+                has_header=has_header,
+                promote_first_row=params.get("transpose_header", False)
+            )
 
         return df, matrix, ""
     except Exception as e:

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem,
     QGroupBox, QLineEdit, QSplitter, QMessageBox, QComboBox,
-    QHeaderView, QInputDialog, QScrollArea, QFrame
+    QHeaderView, QInputDialog, QScrollArea, QFrame, QMenu
 )
 from PySide6.QtCore import Qt, Signal
 import pandas as pd
@@ -56,6 +56,10 @@ class DataTab(QWidget):
         import_btn = QPushButton("+ Smart Import Data File...")
         import_btn.setObjectName("primaryBtn")
         import_btn.clicked.connect(self._open_smart_importer)
+
+        self.transpose_btn = QPushButton("⇄ Transpose Dataset")
+        self.transpose_btn.setToolTip("Transpose the currently selected dataset (swap rows and columns)")
+        self.transpose_btn.clicked.connect(self._transpose_selected_dataset)
         
         remove_btn = QPushButton("Remove Dataset")
         remove_btn.setStyleSheet("color: #f87171;")
@@ -66,6 +70,7 @@ class DataTab(QWidget):
         save_btn.clicked.connect(self._save_project_clicked)
 
         btn_row.addWidget(import_btn)
+        btn_row.addWidget(self.transpose_btn)
         btn_row.addWidget(remove_btn)
         btn_row.addWidget(save_btn)
         btn_row.addStretch()
@@ -73,6 +78,8 @@ class DataTab(QWidget):
 
         self.dataset_list = QListWidget()
         self.dataset_list.currentRowChanged.connect(self._on_dataset_selected)
+        self.dataset_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.dataset_list.customContextMenuRequested.connect(self._show_dataset_context_menu)
         top_layout.addWidget(self.dataset_list)
 
         splitter.addWidget(top_box)
@@ -331,6 +338,48 @@ class DataTab(QWidget):
         del self.datasets[self.active_dataset_id]
         self.refresh_dataset_list()
         self.data_changed.emit()
+
+    def _transpose_selected_dataset(self):
+        """Transposes the active dataset (swaps rows and columns)."""
+        if not self.active_dataset_id or self.active_dataset_id not in self.datasets:
+            QMessageBox.information(self, "No Dataset", "Please select a dataset to transpose.")
+            return
+
+        d = self.datasets[self.active_dataset_id]
+        from core.data_loader import transpose_parsed_data
+        is_2d = d.data_type == "2d_matrix"
+        new_df, new_mat = transpose_parsed_data(
+            df=d.df,
+            matrix=d.matrix,
+            is_2d_matrix=is_2d,
+            has_header=False,
+            promote_first_row=False
+        )
+        if new_df is not None:
+            d.df = new_df
+            d.matrix = new_mat
+            if not d.meta:
+                d.meta = {}
+            d.meta["transpose"] = not d.meta.get("transpose", False)
+            self._display_dataset(d.id)
+            self.data_changed.emit()
+            parent_win = self.window()
+            if hasattr(parent_win, "statusBar") and parent_win.statusBar:
+                sb = parent_win.statusBar() if callable(parent_win.statusBar) else parent_win.statusBar
+                if sb:
+                    sb.showMessage(f"Dataset '{d.name}' transposed ({len(d.df.columns)} columns, {len(d.df)} rows).", 4000)
+
+    def _show_dataset_context_menu(self, pos):
+        item = self.dataset_list.itemAt(pos)
+        if not item:
+            return
+        self.dataset_list.setCurrentItem(item)
+        menu = QMenu(self)
+        trans_act = menu.addAction("⇄ Transpose Dataset")
+        trans_act.triggered.connect(self._transpose_selected_dataset)
+        del_act = menu.addAction("🗑 Remove Dataset")
+        del_act.triggered.connect(self._remove_selected_dataset)
+        menu.exec(self.dataset_list.mapToGlobal(pos))
 
     def _insert_variable(self, text: str):
         self.expr_edit.insert(text)

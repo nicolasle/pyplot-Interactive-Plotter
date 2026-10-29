@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QGroupBox, QFileDialog, QMessageBox,
     QApplication, QTabWidget, QSplitter
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from core.models import FigureConfig, Dataset
@@ -74,6 +74,15 @@ class ExportTab(QWidget):
 
         # Action Buttons Row 2: Figure Image & Project Session
         export_btn_row = QHBoxLayout()
+
+        self.copy_svg_btn = QPushButton("📋 Copy as SVG")
+        self.copy_svg_btn.setToolTip("Copy vector SVG to clipboard (transparent=True)")
+        self.copy_svg_btn.clicked.connect(self._copy_as_svg)
+
+        self.copy_png_btn = QPushButton("📋 Copy as PNG")
+        self.copy_png_btn.setToolTip("Copy high-resolution PNG image to clipboard")
+        self.copy_png_btn.clicked.connect(self._copy_as_png)
+
         export_img_btn = QPushButton("Export Figure (PDF, SVG, PNG)...")
         export_img_btn.clicked.connect(self._export_figure_image)
 
@@ -85,6 +94,8 @@ class ExportTab(QWidget):
         load_session_btn.setToolTip("Open a saved project state file (.plotproj / .json)")
         load_session_btn.clicked.connect(self._load_session)
 
+        export_btn_row.addWidget(self.copy_svg_btn)
+        export_btn_row.addWidget(self.copy_png_btn)
         export_btn_row.addWidget(export_img_btn)
         export_btn_row.addWidget(save_session_btn)
         export_btn_row.addWidget(load_session_btn)
@@ -126,6 +137,24 @@ class ExportTab(QWidget):
             self.nb_edit.setPlainText(nb_str)
         except Exception as e:
             self.code_edit.setPlainText(f"# Error generating code: {e}")
+
+    def _copy_as_svg(self):
+        parent_window = self.window()
+        if hasattr(parent_window, "plot_canvas"):
+            success = parent_window.plot_canvas.copy_as_svg()
+            if success:
+                orig_text = "📋 Copy as SVG"
+                self.copy_svg_btn.setText("✓ Copied SVG!")
+                QTimer.singleShot(1500, lambda: self.copy_svg_btn.setText(orig_text))
+
+    def _copy_as_png(self):
+        parent_window = self.window()
+        if hasattr(parent_window, "plot_canvas"):
+            success = parent_window.plot_canvas.copy_as_png()
+            if success:
+                orig_text = "📋 Copy as PNG"
+                self.copy_png_btn.setText("✓ Copied PNG!")
+                QTimer.singleShot(1500, lambda: self.copy_png_btn.setText(orig_text))
 
     def _copy_python_code(self):
         code = self.code_edit.toPlainText()

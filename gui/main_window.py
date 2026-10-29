@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QStatusBar, QMessageBox, QFileDialog, QToolBar,
     QLabel, QSizePolicy, QApplication, QLineEdit, QAbstractSpinBox
 )
-from PySide6.QtCore import Qt, QLocale, QObject, QEvent
+from PySide6.QtCore import Qt, QLocale, QObject, QEvent, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
 
 from core.models import FigureConfig, Dataset, TraceConfig
@@ -94,8 +94,8 @@ class MainWindow(QMainWindow):
         # Update initial window title
         self._update_window_title()
 
-        # Initial live render
-        self.render_live_figure()
+        # Schedule initial live render on first event loop tick for instant window display
+        QTimer.singleShot(0, self.render_live_figure)
 
     def _setup_ui(self):
         central_widget = QWidget()
@@ -303,6 +303,18 @@ class MainWindow(QMainWindow):
         self.export_fig_act.triggered.connect(self._quick_export_figure)
         file_menu.addAction(self.export_fig_act)
 
+        self.copy_svg_act = QAction("📋 Copy Figure as &SVG (Transparent)", self)
+        self.copy_svg_act.setShortcut(QKeySequence("Ctrl+Alt+S"))
+        self.copy_svg_act.setStatusTip("Copy vector SVG to clipboard (transparent=True)")
+        self.copy_svg_act.triggered.connect(self._quick_copy_svg)
+        file_menu.addAction(self.copy_svg_act)
+
+        self.copy_png_act = QAction("📋 Copy Figure as &PNG", self)
+        self.copy_png_act.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        self.copy_png_act.setStatusTip("Copy high-resolution PNG image to clipboard")
+        self.copy_png_act.triggered.connect(self._quick_copy_png)
+        file_menu.addAction(self.copy_png_act)
+
         self.export_py_act = QAction("🐍 Export &Python Script...", self)
         self.export_py_act.setStatusTip("Export standalone reproducible Matplotlib Python script")
         self.export_py_act.triggered.connect(self._export_python_script)
@@ -344,6 +356,8 @@ class MainWindow(QMainWindow):
         toolbar.addAction(redraw_act)
 
         toolbar.addAction(self.export_fig_act)
+        toolbar.addAction(self.copy_svg_act)
+        toolbar.addAction(self.copy_png_act)
 
     def _update_window_title(self):
         """Updates window title and status bar/toolbar with active project filename."""
@@ -476,6 +490,14 @@ class MainWindow(QMainWindow):
     def _quick_export_figure(self):
         """Triggers figure export dialog from ExportTab."""
         self.export_tab._export_figure_image()
+
+    def _quick_copy_svg(self):
+        """Copies figure to clipboard as vector SVG (transparent=True)."""
+        self.plot_canvas.copy_as_svg()
+
+    def _quick_copy_png(self):
+        """Copies figure to clipboard as high-resolution PNG."""
+        self.plot_canvas.copy_as_png()
 
     def _export_python_script(self):
         """Triggers python script export dialog from ExportTab."""

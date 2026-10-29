@@ -18,9 +18,13 @@ from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, TextArea
 from matplotlib.patches import Rectangle
 from matplotlib.text import Text
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QPainter, QColor
+import io
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox,
+    QPushButton, QApplication
+)
+from PySide6.QtCore import Signal, Qt, QMimeData, QByteArray, QTimer
+from PySide6.QtGui import QPainter, QColor, QImage
 import numpy as np
 import pandas as pd
 
@@ -78,6 +82,19 @@ class PlotCanvas(QWidget):
         self.dim_label = QLabel("14.0 × 10.0 cm")
         self.dim_label.setStyleSheet("color: #38bdf8; font-weight: 600; font-size: 11px; padding: 2px 8px; border: 1px solid #0284c7; border-radius: 3px; background-color: #0c4a6e33;")
         top_bar.addWidget(self.dim_label)
+
+        top_bar.addSpacing(8)
+        self.btn_copy_svg = QPushButton("Copy as SVG")
+        self.btn_copy_svg.setToolTip("Copy figure to clipboard as vector SVG (transparent=True)")
+        self.btn_copy_svg.setStyleSheet("padding: 2px 10px; font-size: 11px; font-weight: 500;")
+        self.btn_copy_svg.clicked.connect(self.copy_as_svg)
+        top_bar.addWidget(self.btn_copy_svg)
+
+        self.btn_copy_png = QPushButton("Copy as PNG")
+        self.btn_copy_png.setToolTip("Copy figure to clipboard as high-resolution PNG image")
+        self.btn_copy_png.setStyleSheet("padding: 2px 10px; font-size: 11px; font-weight: 500;")
+        self.btn_copy_png.clicked.connect(self.copy_as_png)
+        top_bar.addWidget(self.btn_copy_png)
 
         top_bar.addStretch()
         top_bar.addWidget(self.active_ax_label)
@@ -158,6 +175,104 @@ class PlotCanvas(QWidget):
 
     def set_active_subplot_label(self, r: int, c: int):
         self.active_ax_label.setText(f"Active Subplot: ({r}, {c})")
+
+    def copy_as_svg(self) -> bool:
+        """
+        Copies the current figure to the clipboard as vector SVG with transparent=True.
+        Allows instant vector pasting into PowerPoint, Word, Illustrator, Inkscape, or text editors.
+        """
+        try:
+            buf = io.BytesIO()
+            tight = getattr(self.cached_fig_config, "tight_layout", True) if self.cached_fig_config else True
+            self.figure.savefig(
+                buf,
+                format="svg",
+                transparent=True,
+                bbox_inches="tight" if tight else None
+            )
+            svg_bytes = buf.getvalue()
+            svg_text = svg_bytes.decode("utf-8")
+
+            mime = QMimeData()
+            mime.setData("image/svg+xml", QByteArray(svg_bytes))
+            mime.setText(svg_text)
+
+            QApplication.clipboard().setMimeData(mime)
+
+            if hasattr(self, "btn_copy_svg"):
+                orig_text = "Copy as SVG"
+                self.btn_copy_svg.setText("✓ Copied SVG!")
+                QTimer.singleShot(1500, lambda: self.btn_copy_svg.setText(orig_text))
+
+            win = self.window()
+            sb = getattr(win, "statusBar", None)
+            if sb:
+                try:
+                    (sb() if callable(sb) else sb).showMessage("Figure copied to clipboard as SVG (transparent)", 3000)
+                except Exception:
+                    pass
+
+            return True
+        except Exception as e:
+            print(f"Failed to copy figure as SVG: {e}")
+            win = self.window()
+            sb = getattr(win, "statusBar", None)
+            if sb:
+                try:
+                    (sb() if callable(sb) else sb).showMessage(f"Failed to copy SVG: {e}", 3000)
+                except Exception:
+                    pass
+            return False
+
+    def copy_as_png(self, dpi: Optional[int] = None) -> bool:
+        """
+        Copies the current figure to the clipboard as a high-resolution PNG image.
+        Allows instant raster pasting into Word, PowerPoint, Slack, web apps, etc.
+        """
+        try:
+            buf = io.BytesIO()
+            tight = getattr(self.cached_fig_config, "tight_layout", True) if self.cached_fig_config else True
+            target_dpi = dpi or max(300, getattr(self.cached_fig_config, "dpi", 300) if self.cached_fig_config else 300)
+            self.figure.savefig(
+                buf,
+                format="png",
+                dpi=target_dpi,
+                bbox_inches="tight" if tight else None
+            )
+            png_bytes = buf.getvalue()
+
+            qimage = QImage.fromData(png_bytes, "PNG")
+
+            mime = QMimeData()
+            mime.setImageData(qimage)
+            mime.setData("image/png", QByteArray(png_bytes))
+
+            QApplication.clipboard().setMimeData(mime)
+
+            if hasattr(self, "btn_copy_png"):
+                orig_text = "Copy as PNG"
+                self.btn_copy_png.setText("✓ Copied PNG!")
+                QTimer.singleShot(1500, lambda: self.btn_copy_png.setText(orig_text))
+
+            win = self.window()
+            sb = getattr(win, "statusBar", None)
+            if sb:
+                try:
+                    (sb() if callable(sb) else sb).showMessage("Figure copied to clipboard as PNG (300 DPI)", 3000)
+                except Exception:
+                    pass
+
+            return True
+        except Exception as e:
+            print(f"Failed to copy figure as PNG: {e}")
+            win = self.window()
+            sb = getattr(win, "statusBar", None)
+            if sb:
+                try:
+                    (sb() if callable(sb) else sb).showMessage(f"Failed to copy PNG: {e}", 3000)
+                except Exception:
+                    pass
+            return False
 
     def _apply_canvas_sizing(self):
         """Calculates and applies precise canvas and figure dimensions with full High-DPI support."""
