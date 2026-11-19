@@ -625,11 +625,150 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
         return None, None, f"Parsing error: {str(e)}"
 
 
+def differentiate_columns(y: Any, x: Any = None) -> np.ndarray:
+    """
+    Computes numerical derivative dy/dx using second-order accurate central differences
+    (first-order one-sided differences at boundaries).
+    
+    If x is provided: returns dy/dx (gradient of y with respect to x).
+    Handles non-uniform grid spacing in x natively.
+    If x is None: returns dy/dn (gradient with step 1.0).
+    Always returns an array of the exact same length as y.
+    """
+    y_arr = np.asarray(y, dtype=float)
+    if y_arr.ndim == 0 or len(y_arr) == 0:
+        return np.array([], dtype=float)
+    if len(y_arr) == 1:
+        return np.zeros_like(y_arr)
+
+    # Interpolate NaNs in y if present so gradient doesn't blow up
+    if np.isnan(y_arr).any():
+        s = pd.Series(y_arr)
+        y_arr = s.interpolate().bfill().ffill().to_numpy()
+
+    if x is not None:
+        x_arr = np.asarray(x, dtype=float)
+        if len(x_arr) != len(y_arr):
+            raise ValueError(f"Length mismatch: y has {len(y_arr)} elements, but x has {len(x_arr)} elements.")
+        if np.isnan(x_arr).any():
+            s_x = pd.Series(x_arr)
+            x_arr = s_x.interpolate().bfill().ffill().to_numpy()
+        with np.errstate(divide='ignore', invalid='ignore'):
+            res = np.gradient(y_arr, x_arr)
+        res = np.where(np.isinf(res), np.nan, res)
+        return res
+    return np.gradient(y_arr)
+
+
+def apply_gaussian_filter(data: Any, sigma: float = 1.0, mode: str = "reflect") -> np.ndarray:
+    """
+    Applies a Gaussian blur filter to 1D (or 2D) data.
+    sigma: standard deviation in points/samples (> 0).
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.size == 0:
+        return arr
+    sigma = max(0.01, float(sigma))
+
+    work_arr = arr
+    if np.isnan(arr).any():
+        s = pd.Series(arr.flatten())
+        work_arr = s.interpolate().bfill().ffill().to_numpy().reshape(arr.shape)
+
+    try:
+        from scipy.ndimage import gaussian_filter1d, gaussian_filter
+        if arr.ndim == 1:
+            return gaussian_filter1d(work_arr, sigma=sigma, mode=mode)
+        else:
+            return gaussian_filter(work_arr, sigma=sigma, mode=mode)
+    except ImportError:
+        if arr.ndim == 1:
+            radius = int(np.ceil(3.0 * sigma))
+            radius = max(1, radius)
+            k_x = np.arange(-radius, radius + 1)
+            kernel = np.exp(-0.5 * (k_x / sigma) ** 2)
+            kernel /= kernel.sum()
+            pad_mode = mode if mode in ["reflect", "edge"] else "reflect"
+            padded = np.pad(work_arr, radius, mode=pad_mode)
+            conv = np.convolve(padded, kernel, mode="same")
+            return conv[radius:-radius]
+        return work_arr
+
+
+def apply_median_filter(data: Any, size: int = 3) -> np.ndarray:
+    """
+    Applies a median filter to remove impulsive noise and outliers.
+    size: kernel/window size (odd integer >= 1).
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.size == 0:
+        return arr
+    k_size = int(size)
+    if k_size % 2 == 0:
+        k_size += 1
+    k_size = max(1, k_size)
+    if arr.ndim == 1 and k_size > len(arr):
+        k_size = len(arr) if len(arr) % 2 == 1 else max(1, len(arr) - 1)
+
+    try:
+        from scipy.signal import medfilt
+        from scipy.ndimage import median_filter
+        if arr.ndim == 1:
+            return medfilt(arr, kernel_size=k_size)
+        else:
+            return median_filter(arr, size=k_size)
+    except ImportError:
+        if arr.ndim == 1:
+            return pd.Series(arr).rolling(window=k_size, center=True, min_periods=1).median().to_numpy()
+        return arr
+
+
+def apply_moving_average(data: Any, window: int = 5) -> np.ndarray:
+    """
+    Applies a moving average (rolling mean) filter.
+    window: number of samples in the moving window (>= 1).
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.size == 0:
+        return arr
+    win = max(1, int(window))
+    if arr.ndim == 1:
+        return pd.Series(arr).rolling(window=win, center=True, min_periods=1).mean().to_numpy()
+    return arr
+
+
+def apply_savgol_filter(data: Any, window_length: int = 7, polyorder: int = 2) -> np.ndarray:
+    """
+    Applies a Savitzky-Golay polynomial smoothing filter.
+    Preserves peak shapes, widths, and heights better than standard moving averages.
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.size == 0:
+        return arr
+    win = int(window_length)
+    if win % 2 == 0:
+        win += 1
+    win = max(3, win)
+    if arr.ndim == 1 and win > len(arr):
+        win = len(arr) if len(arr) % 2 == 1 else max(3, len(arr) - 1)
+    poly = min(int(polyorder), win - 1)
+    try:
+        from scipy.signal import savgol_filter
+        if arr.ndim == 1 and len(arr) >= win:
+            return savgol_filter(arr, window_length=win, polyorder=poly)
+    except ImportError:
+        pass
+    return apply_moving_average(arr, window=win)
+
+
 def evaluate_column_expression(df: pd.DataFrame, new_col_name: str, expression: str) -> Tuple[Optional[pd.DataFrame], str]:
     """
-    Safely calculates a new column based on existing columns and numpy functions.
-    Includes dedB (reverting dB), dB, gradient, and standard math operations.
-    e.g., 'dedB(col)', '10 ** (col / 20)', 'y * 1e3', 'x - x.min()', 'np.log10(np.abs(y))'
+    Safely calculates a new column based on existing columns and mathematical/smoothing functions.
+    Includes:
+    - Differentiation: diff(y, x), derivative(y, x), gradient(y, x)
+    - Smoothing filters: gaussian_filter(col, sigma), median_filter(col, size), moving_average(col, window), savgol_filter(col, win, poly)
+    - Decibel and de-dB: dedB(col), dedB_power(col), to_dB(col), to_dB_power(col)
+    - Standard numpy functions: np.log10, np.exp, np.sqrt, np.sin, np.abs, etc.
     """
     try:
         # Helper functions for dB and de-dB operations
@@ -663,7 +802,19 @@ def evaluate_column_expression(df: pd.DataFrame, new_col_name: str, expression: 
             "log10": np.log10,
             "sqrt": np.sqrt,
             "abs": np.abs,
-            "gradient": np.gradient,
+            "gradient": differentiate_columns,
+            "diff": differentiate_columns,
+            "derivative": differentiate_columns,
+            "differentiate": differentiate_columns,
+            "gaussian_filter": apply_gaussian_filter,
+            "gaussian_blur": apply_gaussian_filter,
+            "median_filter": apply_median_filter,
+            "medfilt": apply_median_filter,
+            "moving_average": apply_moving_average,
+            "moving_avg": apply_moving_average,
+            "rolling_mean": apply_moving_average,
+            "savgol_filter": apply_savgol_filter,
+            "savgol": apply_savgol_filter,
             "dedB": dedB,
             "dedb": dedB,
             "dedB_power": dedB_power,
