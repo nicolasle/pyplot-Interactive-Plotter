@@ -9,6 +9,7 @@ import os
 import re
 import csv
 import io
+from collections import Counter
 from typing import Dict, Any, Tuple, Optional, List
 import pandas as pd
 import numpy as np
@@ -285,6 +286,13 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         # Check if rows are roughly square-ish or wide grid
         is_2d_matrix = False  # Keep false by default for user to toggle, but flag potential
 
+    # Step 7: Check for wide condition columns (e.g. Dose 3, Dose 3.4, Dose 3.8)
+    wide_prefix, is_wide = None, False
+    if has_header and candidate_lines:
+        hdr_line = sample_lines[header_row] if header_row is not None and header_row < len(sample_lines) else candidate_lines[0]
+        tokens = tokenize(hdr_line, best_delim)
+        wide_prefix, is_wide = detect_wide_condition_columns(tokens)
+
     return {
         "format": "text",
         "encoding": encoding,
@@ -295,6 +303,8 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         "comment": detected_comment,
         "decimal": detected_decimal,
         "is_2d_matrix": is_2d_matrix,
+        "is_wide_condition": is_wide,
+        "wide_prefix": wide_prefix,
         "sample_lines": sample_lines
     }
 
@@ -374,6 +384,98 @@ def transpose_parsed_data(
     return df_t, None
 
 
+def detect_wide_condition_columns(cols: List[str]) -> Tuple[Optional[str], bool]:
+    """
+    Detects if column headers represent multi-condition repetitions
+    (e.g., 'Dose 3', 'Dose 3.4', 'Dose 3.8', or '10', '20', '30').
+    Returns (suggested_condition_name, is_detected).
+    """
+    if not cols or len(cols) < 2:
+        return None, False
+    prefixes = []
+    numbers = []
+    for c in cols:
+        s = str(c).strip()
+        m = re.match(r"^(.*?)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(.*?)$", s)
+        if m and m.group(2):
+            p = m.group(1).strip()
+            prefixes.append(p)
+            numbers.append(float(m.group(2)))
+    if len(numbers) >= max(2, int(len(cols) * 0.6)):
+        most_common_p = Counter(prefixes).most_common(1)[0][0] if prefixes else ""
+        return (most_common_p or "Condition"), True
+    return None, False
+
+
+def melt_wide_dataframe(
+    df: pd.DataFrame,
+    var_name: str = "Condition",
+    value_name: str = "Value",
+    columns_to_melt: Optional[List[str]] = None,
+    extract_numeric: bool = True
+) -> pd.DataFrame:
+    """
+    Reshapes a wide table with repeated measurements per condition into long (X, Y) format.
+    Extracts numeric values from column names if extract_numeric=True (e.g. 'Dose 3.4' -> 3.4).
+    """
+    if df is None or df.empty:
+        return df
+
+    cols = columns_to_melt if columns_to_melt is not None else list(df.columns)
+    df_long = df[cols].melt(var_name=f"{var_name}_label", value_name=value_name).dropna(subset=[value_name])
+
+    if extract_numeric:
+        extracted = df_long[f"{var_name}_label"].astype(str).str.extract(
+            r"([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
+        )[0]
+        try:
+            df_long[var_name] = pd.to_numeric(extracted)
+        except Exception:
+            df_long[var_name] = extracted
+    else:
+        df_long[var_name] = df_long[f"{var_name}_label"]
+        try:
+            df_long[var_name] = pd.to_numeric(df_long[var_name])
+        except Exception:
+            pass
+
+    try:
+        df_long[value_name] = pd.to_numeric(df_long[value_name])
+    except Exception:
+        pass
+
+    ordered_cols = [var_name, value_name]
+    label_col = f"{var_name}_label"
+    if label_col in df_long.columns and label_col not in ordered_cols:
+        ordered_cols.append(label_col)
+
+    df_res = df_long[ordered_cols].copy()
+    if pd.api.types.is_numeric_dtype(df_res[var_name]):
+        df_res = df_res.sort_values(by=[var_name]).reset_index(drop=True)
+    else:
+        df_res = df_res.reset_index(drop=True)
+
+    return df_res
+
+
+def compute_group_statistics(
+    df: pd.DataFrame,
+    group_col: str,
+    val_col: str
+) -> pd.DataFrame:
+    """
+    Computes summary statistics (mean, std, sem, count, min, max) grouped by group_col.
+    """
+    if df is None or df.empty or group_col not in df.columns or val_col not in df.columns:
+        return pd.DataFrame()
+
+    stats = df.groupby(group_col)[val_col].agg(["mean", "std", "sem", "count", "min", "max"]).reset_index()
+    stats.columns = [group_col, f"{val_col}_mean", f"{val_col}_std", f"{val_col}_sem", "count", f"{val_col}_min", f"{val_col}_max"]
+    stats[f"{val_col}_std"] = stats[f"{val_col}_std"].fillna(0.0)
+    stats[f"{val_col}_sem"] = stats[f"{val_col}_sem"].fillna(0.0)
+    return stats
+
+
 def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = None) -> Tuple[Optional[pd.DataFrame], Optional[np.ndarray], str]:
     """
     Parses the file using given parameters.
@@ -423,6 +525,16 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
                     is_2d_matrix=params.get("is_2d_matrix", False),
                     has_header=has_header,
                     promote_first_row=params.get("transpose_header", False)
+                )
+            if params.get("melt_wide", False) and df is not None and not df.empty:
+                var_name = params.get("melt_var_name", "Condition") or "Condition"
+                val_name = params.get("melt_val_name", "Value") or "Value"
+                extract_num = params.get("melt_extract_numeric", True)
+                df = melt_wide_dataframe(
+                    df,
+                    var_name=var_name,
+                    value_name=val_name,
+                    extract_numeric=extract_num
                 )
             return df, None, ""
         except Exception as e:
@@ -495,6 +607,18 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
                 has_header=has_header,
                 promote_first_row=params.get("transpose_header", False)
             )
+
+        if params.get("melt_wide", False) and df is not None and not df.empty:
+            var_name = params.get("melt_var_name", "Condition") or "Condition"
+            val_name = params.get("melt_val_name", "Value") or "Value"
+            extract_num = params.get("melt_extract_numeric", True)
+            df = melt_wide_dataframe(
+                df,
+                var_name=var_name,
+                value_name=val_name,
+                extract_numeric=extract_num
+            )
+            matrix = None
 
         return df, matrix, ""
     except Exception as e:

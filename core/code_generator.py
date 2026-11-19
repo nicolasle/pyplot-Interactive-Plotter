@@ -154,6 +154,36 @@ def generate_python_code(
                     col_names = [f"Col {i}" for i in range(d.df.shape[1])]
                     lines.append(f'{var_name}.columns = {col_names}')
 
+                if d.meta and d.meta.get("melt_wide", False):
+                    lines.append('# Reshape / Unpivot wide repetition columns into paired (X, Y)')
+                    var_name_x = d.meta.get("melt_var_name", "Condition") or "Condition"
+                    var_name_y = d.meta.get("melt_val_name", "Value") or "Value"
+                    extract_num = d.meta.get("melt_extract_numeric", True)
+                    cols_to_melt = d.meta.get("melt_columns", None)
+                    cols_slice = f"[{cols_to_melt!r}]" if cols_to_melt else ""
+                    lines.append(f'{var_name} = {var_name}{cols_slice}.melt(var_name="{var_name_x}_label", value_name="{var_name_y}").dropna(subset=["{var_name_y}"])')
+                    if extract_num:
+                        lines.append(f'{var_name}["{var_name_x}"] = pd.to_numeric({var_name}["{var_name_x}_label"].astype(str).str.extract(r"([-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)")[0], errors="coerce")')
+                    else:
+                        lines.append(f'try:')
+                        lines.append(f'    {var_name}["{var_name_x}"] = pd.to_numeric({var_name}["{var_name_x}_label"])')
+                        lines.append(f'except Exception:')
+                        lines.append(f'    pass')
+                    lines.append(f'try:')
+                    lines.append(f'    {var_name}["{var_name_y}"] = pd.to_numeric({var_name}["{var_name_y}"])')
+                    lines.append(f'except Exception:')
+                    lines.append(f'    pass')
+                    lines.append(f'if pd.api.types.is_numeric_dtype({var_name}["{var_name_x}"]):')
+                    lines.append(f'    {var_name} = {var_name}.sort_values(by=["{var_name_x}"]).reset_index(drop=True)')
+                    lines.append(f'else:')
+                    lines.append(f'    {var_name} = {var_name}.reset_index(drop=True)')
+                    if d.meta.get("is_summary", False):
+                        lines.append('# Compute summary statistics (mean, std, sem, count, min, max)')
+                        lines.append(f'{var_name} = {var_name}.groupby("{var_name_x}")["{var_name_y}"].agg(["mean", "std", "sem", "count", "min", "max"]).reset_index()')
+                        lines.append(f'{var_name}.columns = ["{var_name_x}", "{var_name_y}_mean", "{var_name_y}_std", "{var_name_y}_sem", "count", "{var_name_y}_min", "{var_name_y}_max"]')
+                        lines.append(f'{var_name}["{var_name_y}_std"] = {var_name}["{var_name_y}_std"].fillna(0)')
+                        lines.append(f'{var_name}["{var_name_y}_sem"] = {var_name}["{var_name_y}_sem"].fillna(0)')
+
                 if d.df is not None:
                     expected_cols = list(d.df.columns)
                     lines.append(f'if list({var_name}.columns) != {expected_cols} and len({var_name}.columns) == {len(expected_cols)}:')

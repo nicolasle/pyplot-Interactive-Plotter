@@ -11,15 +11,240 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem,
     QGroupBox, QLineEdit, QSplitter, QMessageBox, QComboBox,
-    QHeaderView, QInputDialog, QScrollArea, QFrame, QMenu
+    QHeaderView, QInputDialog, QScrollArea, QFrame, QMenu,
+    QDialog, QCheckBox, QDialogButtonBox, QFormLayout
 )
 from PySide6.QtCore import Qt, Signal
 import pandas as pd
 import numpy as np
 
 from core.models import Dataset
-from core.data_loader import evaluate_column_expression
+from core.data_loader import (
+    evaluate_column_expression,
+    detect_wide_condition_columns,
+    melt_wide_dataframe,
+    compute_group_statistics,
+    transpose_parsed_data
+)
 from gui.smart_import_dialog import SmartImportDialog
+
+
+class MeltWideDialog(QDialog):
+    """
+    Dialog to reshape wide multi-repetition or multi-condition tables
+    into long paired (X, Y) format (e.g. Dose 3, Dose 3.4 -> Dose, Width).
+    """
+    def __init__(self, dataset: Dataset, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.dataset = dataset
+        self.result_df = None
+        self.stats_df = None
+        self.setWindowTitle(f"Unpivot / Melt Wide Data — {dataset.name}")
+        self.resize(780, 620)
+        self._setup_ui()
+        self._update_preview()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        # Header description
+        info = QLabel(
+            "<b>Reshape / Unpivot Wide Repetition Table:</b><br>"
+            "Converts multiple condition columns (e.g. <i>Dose 3, Dose 3.4...</i>) into paired (X, Y) data points.<br>"
+            "Enables plotting raw repetitions as a scatter plot and generates summary statistics (Mean ± Std)."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        # Main splitter (Left: Options & Column selector, Right: Live preview)
+        content_splitter = QSplitter(Qt.Horizontal)
+
+        # Left panel: Configuration
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+
+        # 1. Column selector
+        col_group = QGroupBox("1. Columns to Unpivot")
+        col_layout = QVBoxLayout(col_group)
+        col_btn_row = QHBoxLayout()
+        sel_all_btn = QPushButton("Select All")
+        sel_all_btn.clicked.connect(self._select_all_cols)
+        desel_all_btn = QPushButton("Deselect All")
+        desel_all_btn.clicked.connect(self._deselect_all_cols)
+        col_btn_row.addWidget(sel_all_btn)
+        col_btn_row.addWidget(desel_all_btn)
+        col_layout.addLayout(col_btn_row)
+
+        self.col_list = QListWidget()
+        self.col_list.setMinimumHeight(150)
+        cols = list(self.dataset.df.columns) if self.dataset.df is not None else []
+        for c in cols:
+            item = QListWidgetItem(str(c))
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.col_list.addItem(item)
+        self.col_list.itemChanged.connect(lambda _: self._update_preview())
+        col_layout.addWidget(self.col_list)
+        left_layout.addWidget(col_group)
+
+        # 2. Reshaping parameters
+        param_group = QGroupBox("2. Target Column Names & Options")
+        param_layout = QFormLayout(param_group)
+
+        suggested_prefix, is_wide = detect_wide_condition_columns(cols)
+        init_x = suggested_prefix if (is_wide and suggested_prefix) else "Condition"
+        name_lower = (self.dataset.name or "").lower()
+        if "width" in name_lower or "slit" in name_lower:
+            init_y = "Width"
+        elif "intensity" in name_lower:
+            init_y = "Intensity"
+        else:
+            init_y = "Value"
+
+        self.x_name_edit = QLineEdit(init_x)
+        self.x_name_edit.textChanged.connect(lambda _: self._update_preview())
+        param_layout.addRow("Condition / X Name:", self.x_name_edit)
+
+        self.extract_num_cb = QCheckBox("Extract numeric values from header names")
+        self.extract_num_cb.setToolTip("e.g. Extracts 3.4 from 'Dose 3.4' to make X a numeric coordinate")
+        self.extract_num_cb.setChecked(True)
+        self.extract_num_cb.toggled.connect(lambda _: self._update_preview())
+        param_layout.addRow("", self.extract_num_cb)
+
+        self.y_name_edit = QLineEdit(init_y)
+        self.y_name_edit.textChanged.connect(lambda _: self._update_preview())
+        param_layout.addRow("Measurement / Y Name:", self.y_name_edit)
+
+        self.stats_cb = QCheckBox("Also generate Mean ± Std summary dataset")
+        self.stats_cb.setToolTip("Creates an additional dataset with group statistics for errorbar plots")
+        self.stats_cb.setChecked(True)
+        self.stats_cb.toggled.connect(lambda _: self._update_preview())
+        param_layout.addRow("", self.stats_cb)
+
+        self.keep_orig_cb = QCheckBox("Keep original dataset (create new unpivoted dataset)")
+        self.keep_orig_cb.setChecked(True)
+        param_layout.addRow("", self.keep_orig_cb)
+
+        left_layout.addWidget(param_group)
+        content_splitter.addWidget(left_widget)
+
+        # Right panel: Live Preview
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
+
+        preview_group = QGroupBox("Live Reshaped Preview (first 20 rows)")
+        preview_inner = QVBoxLayout(preview_group)
+
+        self.preview_status_label = QLabel("Generating preview...")
+        self.preview_status_label.setStyleSheet("color: #38bdf8; font-size: 11px;")
+        preview_inner.addWidget(self.preview_status_label)
+
+        self.preview_table = QTableWidget()
+        self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.preview_table.horizontalHeader().setDefaultSectionSize(100)
+        preview_inner.addWidget(self.preview_table)
+
+        right_layout.addWidget(preview_group)
+        content_splitter.addWidget(right_widget)
+        content_splitter.setStretchFactor(0, 4)
+        content_splitter.setStretchFactor(1, 6)
+
+        layout.addWidget(content_splitter)
+
+        # Dialog Buttons
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_box.addWidget(cancel_btn)
+
+        self.apply_btn = QPushButton("Unpivot & Create")
+        self.apply_btn.setObjectName("primaryBtn")
+        self.apply_btn.clicked.connect(self.accept)
+        btn_box.addWidget(self.apply_btn)
+
+        layout.addLayout(btn_box)
+
+    def _select_all_cols(self):
+        self.col_list.blockSignals(True)
+        for i in range(self.col_list.count()):
+            self.col_list.item(i).setCheckState(Qt.Checked)
+        self.col_list.blockSignals(False)
+        self._update_preview()
+
+    def _deselect_all_cols(self):
+        self.col_list.blockSignals(True)
+        for i in range(self.col_list.count()):
+            self.col_list.item(i).setCheckState(Qt.Unchecked)
+        self.col_list.blockSignals(False)
+        self._update_preview()
+
+    def get_selected_columns(self):
+        cols = []
+        for i in range(self.col_list.count()):
+            item = self.col_list.item(i)
+            if item.checkState() == Qt.Checked:
+                cols.append(item.text())
+        return cols
+
+    def _update_preview(self):
+        if self.dataset.df is None or self.dataset.df.empty:
+            return
+
+        selected_cols = self.get_selected_columns()
+        if not selected_cols:
+            self.preview_table.clear()
+            self.preview_table.setRowCount(0)
+            self.preview_table.setColumnCount(0)
+            self.preview_status_label.setText("⚠️ Please select at least one column to unpivot.")
+            self.apply_btn.setEnabled(False)
+            return
+
+        self.apply_btn.setEnabled(True)
+        var_name = self.x_name_edit.text().strip() or "Condition"
+        val_name = self.y_name_edit.text().strip() or "Value"
+        extract_num = self.extract_num_cb.isChecked()
+
+        try:
+            self.result_df = melt_wide_dataframe(
+                self.dataset.df,
+                var_name=var_name,
+                value_name=val_name,
+                columns_to_melt=selected_cols,
+                extract_numeric=extract_num
+            )
+            if self.stats_cb.isChecked():
+                self.stats_df = compute_group_statistics(self.result_df, var_name, val_name)
+            else:
+                self.stats_df = None
+
+            preview_rows = min(20, len(self.result_df))
+            cols = list(self.result_df.columns)
+            self.preview_table.clear()
+            self.preview_table.setRowCount(preview_rows)
+            self.preview_table.setColumnCount(len(cols))
+            self.preview_table.setHorizontalHeaderLabels(cols)
+
+            for r in range(preview_rows):
+                for c, col_name in enumerate(cols):
+                    val = self.result_df.iloc[r, c]
+                    text = f"{val:.5g}" if isinstance(val, (int, float, np.floating, np.integer)) else str(val)
+                    item = QTableWidgetItem(text)
+                    item.setTextAlignment(Qt.AlignRight if isinstance(val, (int, float, np.number)) else Qt.AlignLeft)
+                    self.preview_table.setItem(r, c, item)
+
+            summary_info = " (+ Mean ± Std dataset)" if self.stats_cb.isChecked() else ""
+            self.preview_status_label.setText(
+                f"✅ Reshaped into {len(self.result_df)} paired rows with columns {cols}{summary_info}"
+            )
+        except Exception as e:
+            self.preview_status_label.setText(f"❌ Reshaping error: {e}")
 
 
 class DataTab(QWidget):
@@ -60,6 +285,10 @@ class DataTab(QWidget):
         self.transpose_btn = QPushButton("⇄ Transpose Dataset")
         self.transpose_btn.setToolTip("Transpose the currently selected dataset (swap rows and columns)")
         self.transpose_btn.clicked.connect(self._transpose_selected_dataset)
+
+        self.melt_btn = QPushButton("⤹ Unpivot / Melt to XY...")
+        self.melt_btn.setToolTip("Reshape wide repetition columns (e.g. Dose 3, Dose 3.4...) into paired (X, Y) scatter data")
+        self.melt_btn.clicked.connect(self._open_melt_wide_dialog)
         
         remove_btn = QPushButton("Remove Dataset")
         remove_btn.setStyleSheet("color: #f87171;")
@@ -71,6 +300,7 @@ class DataTab(QWidget):
 
         btn_row.addWidget(import_btn)
         btn_row.addWidget(self.transpose_btn)
+        btn_row.addWidget(self.melt_btn)
         btn_row.addWidget(remove_btn)
         btn_row.addWidget(save_btn)
         btn_row.addStretch()
@@ -191,6 +421,8 @@ class DataTab(QWidget):
         if dialog.exec() == SmartImportDialog.Accepted and dialog.imported_dataset:
             ds = dialog.imported_dataset
             self.datasets[ds.id] = ds
+            for extra in getattr(dialog, "extra_datasets", []):
+                self.datasets[extra.id] = extra
             self.refresh_dataset_list(select_id=ds.id)
             self.data_changed.emit()
 
@@ -369,6 +601,76 @@ class DataTab(QWidget):
                 if sb:
                     sb.showMessage(f"Dataset '{d.name}' transposed ({len(d.df.columns)} columns, {len(d.df)} rows).", 4000)
 
+    def _open_melt_wide_dialog(self):
+        """Opens dialog to unpivot/melt wide multi-repetition table into long (X, Y) format."""
+        if not self.active_dataset_id or self.active_dataset_id not in self.datasets:
+            QMessageBox.information(self, "No Dataset", "Please select a dataset to unpivot.")
+            return
+
+        d = self.datasets[self.active_dataset_id]
+        if d.df is None or d.df.empty:
+            QMessageBox.warning(self, "Empty Dataset", "Selected dataset contains no tabular data.")
+            return
+
+        dialog = MeltWideDialog(dataset=d, parent=self)
+        if dialog.exec() == QDialog.Accepted and dialog.result_df is not None:
+            new_df = dialog.result_df
+            x_name = dialog.x_name_edit.text().strip() or "Condition"
+            y_name = dialog.y_name_edit.text().strip() or "Value"
+            extract_num = dialog.extract_num_cb.isChecked()
+            selected_cols = dialog.get_selected_columns()
+            keep_orig = dialog.keep_orig_cb.isChecked()
+
+            meta_info = dict(d.meta) if d.meta else {}
+            meta_info.update({
+                "melt_wide": True,
+                "melt_var_name": x_name,
+                "melt_val_name": y_name,
+                "melt_extract_numeric": extract_num,
+                "melt_columns": selected_cols,
+            })
+
+            target_id = None
+            if keep_orig:
+                new_ds = Dataset(
+                    name=f"{d.name} (Unpivoted)",
+                    data_type="1d_table",
+                    df=new_df,
+                    filepath=d.filepath,
+                    meta=meta_info
+                )
+                self.datasets[new_ds.id] = new_ds
+                target_id = new_ds.id
+            else:
+                d.df = new_df
+                d.meta = meta_info
+                target_id = d.id
+
+            if dialog.stats_cb.isChecked() and dialog.stats_df is not None and not dialog.stats_df.empty:
+                stats_meta = dict(meta_info)
+                stats_meta["is_summary"] = True
+                stats_meta["summary_of"] = d.name
+                summary_ds = Dataset(
+                    name=f"{d.name} (Mean ± Std)",
+                    data_type="1d_table",
+                    df=dialog.stats_df,
+                    filepath=d.filepath,
+                    meta=stats_meta
+                )
+                self.datasets[summary_ds.id] = summary_ds
+
+            self.refresh_dataset_list(select_id=target_id)
+            self.data_changed.emit()
+
+            parent_win = self.window()
+            if hasattr(parent_win, "statusBar") and parent_win.statusBar:
+                sb = parent_win.statusBar() if callable(parent_win.statusBar) else parent_win.statusBar
+                if sb:
+                    sb.showMessage(
+                        f"Dataset unpivoted into {len(new_df)} paired (X, Y) points ('{x_name}' vs '{y_name}').",
+                        5000
+                    )
+
     def _show_dataset_context_menu(self, pos):
         item = self.dataset_list.itemAt(pos)
         if not item:
@@ -377,6 +679,8 @@ class DataTab(QWidget):
         menu = QMenu(self)
         trans_act = menu.addAction("⇄ Transpose Dataset")
         trans_act.triggered.connect(self._transpose_selected_dataset)
+        melt_act = menu.addAction("⤹ Unpivot / Melt to XY...")
+        melt_act.triggered.connect(self._open_melt_wide_dialog)
         del_act = menu.addAction("🗑 Remove Dataset")
         del_act.triggered.connect(self._remove_selected_dataset)
         menu.exec(self.dataset_list.mapToGlobal(pos))

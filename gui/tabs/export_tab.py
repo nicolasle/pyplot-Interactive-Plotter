@@ -19,6 +19,7 @@ from PySide6.QtGui import QFont
 from core.models import FigureConfig, Dataset
 from core.code_generator import generate_python_code, generate_jupyter_notebook
 from core.project_manager import save_project_to_file, load_project_from_file, PROJECT_FILE_FILTER
+from gui.file_dialog_helper import FileDialogHelper
 
 
 class ExportTab(QWidget):
@@ -163,7 +164,7 @@ class ExportTab(QWidget):
         QMessageBox.information(self, "Copied", "Python code successfully copied to clipboard!")
 
     def _save_python_script(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = FileDialogHelper.getSaveFileName(
             self, "Save Python Script", "plot_script.py", "Python Scripts (*.py)"
         )
         if not file_path:
@@ -178,7 +179,7 @@ class ExportTab(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to save script:\n{e}")
 
     def _save_jupyter_notebook(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = FileDialogHelper.getSaveFileName(
             self, "Save Jupyter Notebook", "plot_notebook.ipynb", "Jupyter Notebooks (*.ipynb)"
         )
         if not file_path:
@@ -193,7 +194,7 @@ class ExportTab(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to save notebook:\n{e}")
 
     def _export_figure_image(self):
-        file_path, selected_filter = QFileDialog.getSaveFileName(
+        file_path, selected_filter = FileDialogHelper.getSaveFileName(
             self,
             "Export High-Resolution Figure",
             "figure.pdf",
@@ -221,7 +222,7 @@ class ExportTab(QWidget):
             parent.save_project_state()
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = FileDialogHelper.getSaveFileName(
             self, "Save Project State", "project.plotproj", PROJECT_FILE_FILTER
         )
         if not file_path:
@@ -239,7 +240,7 @@ class ExportTab(QWidget):
             parent.open_project_state()
             return
 
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = FileDialogHelper.getOpenFileName(
             self, "Open Project State", "", PROJECT_FILE_FILTER
         )
         if not file_path:

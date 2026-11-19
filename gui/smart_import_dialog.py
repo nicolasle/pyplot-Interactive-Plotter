@@ -8,7 +8,7 @@ Allows immediate user correction of delimiter, headers, skiprows, and decimal ma
 import os
 from typing import Dict, Any, Optional
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QCheckBox, QTableWidget, QTableWidgetItem,
     QTextEdit, QSplitter, QGroupBox, QFileDialog, QMessageBox,
     QRadioButton, QButtonGroup, QLineEdit, QHeaderView, QInputDialog
@@ -17,8 +17,9 @@ from PySide6.QtCore import Qt, Signal
 import pandas as pd
 import numpy as np
 
-from core.data_loader import sniff_file_parameters, parse_file
+from core.data_loader import sniff_file_parameters, parse_file, compute_group_statistics
 from core.models import Dataset
+from gui.file_dialog_helper import FileDialogHelper
 
 
 class SmartImportDialog(QDialog):
@@ -36,6 +37,7 @@ class SmartImportDialog(QDialog):
         self.current_df: Optional[pd.DataFrame] = None
         self.current_matrix: Optional[np.ndarray] = None
         self.imported_dataset: Optional[Dataset] = None
+        self.extra_datasets = []
         self.custom_column_names: Dict[str, str] = {}
 
         self._setup_ui()
@@ -172,6 +174,47 @@ class SmartImportDialog(QDialog):
         t_box.addWidget(self.transpose_header_cb)
         ctrl_layout.addLayout(t_box)
 
+        # Reshape / Unpivot Wide Columns to XY (e.g. Width vs Dose)
+        melt_box = QVBoxLayout()
+        melt_box.setSpacing(4)
+        self.melt_cb = QCheckBox("Reshape / Unpivot Wide Table to (X, Y) Paired Data")
+        self.melt_cb.setToolTip(
+            "Converts multi-column repeated measurements into paired (X, Y) scatter data.\n"
+            "Ideal for files with measurements across multiple condition columns (e.g. Dose 3, Dose 3.4 -> Width vs Dose)."
+        )
+        self.melt_cb.stateChanged.connect(self._on_melt_toggled)
+        melt_box.addWidget(self.melt_cb)
+
+        self.melt_options_container = QWidget()
+        melt_opt_layout = QGridLayout(self.melt_options_container)
+        melt_opt_layout.setContentsMargins(20, 2, 0, 4)
+        melt_opt_layout.setSpacing(6)
+
+        melt_opt_layout.addWidget(QLabel("Condition / X Name:"), 0, 0)
+        self.melt_x_edit = QLineEdit("Dose")
+        self.melt_x_edit.setPlaceholderText("e.g. Dose, Time, Condition")
+        self.melt_x_edit.textChanged.connect(self._on_params_changed)
+        melt_opt_layout.addWidget(self.melt_x_edit, 0, 1)
+
+        self.melt_extract_num_cb = QCheckBox("Extract numeric values from header text (e.g. 'Dose 3.4' → 3.4)")
+        self.melt_extract_num_cb.setChecked(True)
+        self.melt_extract_num_cb.stateChanged.connect(self._on_params_changed)
+        melt_opt_layout.addWidget(self.melt_extract_num_cb, 1, 0, 1, 2)
+
+        melt_opt_layout.addWidget(QLabel("Measurement / Y Name:"), 2, 0)
+        self.melt_y_edit = QLineEdit("Width")
+        self.melt_y_edit.setPlaceholderText("e.g. Width, Intensity, Value")
+        self.melt_y_edit.textChanged.connect(self._on_params_changed)
+        melt_opt_layout.addWidget(self.melt_y_edit, 2, 1)
+
+        self.melt_stats_cb = QCheckBox("Also generate Mean ± Std summary dataset upon import")
+        self.melt_stats_cb.setChecked(True)
+        melt_opt_layout.addWidget(self.melt_stats_cb, 3, 0, 1, 2)
+
+        self.melt_options_container.setVisible(False)
+        melt_box.addWidget(self.melt_options_container)
+        ctrl_layout.addLayout(melt_box)
+
         # Dataset Name
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Dataset Name:"))
@@ -224,7 +267,7 @@ class SmartImportDialog(QDialog):
         main_layout.addLayout(action_bar)
 
     def _on_browse(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = FileDialogHelper.getOpenFileName(
             self,
             "Select Scientific Data File",
             "",
@@ -235,6 +278,7 @@ class SmartImportDialog(QDialog):
 
     def load_file(self, filepath: str):
         self.filepath = filepath
+        FileDialogHelper.set_last_dir(filepath)
         self.file_label.setText(f"File: {os.path.basename(filepath)}")
         self.dataset_name_edit.setText(os.path.splitext(os.path.basename(filepath))[0])
 
@@ -294,6 +338,18 @@ class SmartImportDialog(QDialog):
         self.transpose_header_cb.setChecked(p.get("transpose_header", False))
         self.transpose_header_cb.setEnabled(p.get("transpose", False))
 
+        # Check if wide condition format detected (e.g. Dose 3, Dose 3.4)
+        is_wide = p.get("is_wide_condition", False)
+        prefix = p.get("wide_prefix", "Condition") or "Condition"
+        self.melt_x_edit.setText(prefix)
+        fp_lower = self.filepath.lower() if self.filepath else ""
+        if "width" in fp_lower or "slit" in fp_lower:
+            self.melt_y_edit.setText("Width")
+        elif "intensity" in fp_lower:
+            self.melt_y_edit.setText("Intensity")
+        else:
+            self.melt_y_edit.setText("Value")
+
         # Status text
         header_desc = "Header detected" if p.get("has_header") else "No header (auto-named)"
         delim_desc = p.get("delimiter")
@@ -304,10 +360,13 @@ class SmartImportDialog(QDialog):
         elif delim_desc == ",":
             delim_desc = "Comma"
 
-        self.sniff_status.setText(
+        status_msg = (
             f"Auto-Detected: {delim_desc} delimiter | {header_desc} | "
             f"Skip {p.get('skiprows', 0)} rows | Decimal: '{p.get('decimal', '.')}'"
         )
+        if is_wide:
+            status_msg += f"\n💡 Detected repetition columns with '{prefix}'. Check 'Reshape / Unpivot' below to plot paired (X, Y)."
+        self.sniff_status.setText(status_msg)
 
         self._refresh_parsed_preview()
 
@@ -339,6 +398,11 @@ class SmartImportDialog(QDialog):
             "is_2d_matrix": self.type_2d_radio.isChecked(),
             "transpose": self.transpose_cb.isChecked(),
             "transpose_header": self.transpose_header_cb.isChecked(),
+            "melt_wide": self.melt_cb.isChecked(),
+            "melt_var_name": self.melt_x_edit.text().strip() or "Condition",
+            "melt_val_name": self.melt_y_edit.text().strip() or "Value",
+            "melt_extract_numeric": self.melt_extract_num_cb.isChecked(),
+            "melt_generate_stats": self.melt_stats_cb.isChecked(),
             "encoding": self.sniffed_params.get("encoding", "utf-8")
         }
 
@@ -350,6 +414,11 @@ class SmartImportDialog(QDialog):
             self.transpose_header_cb.setChecked(True)
         elif not is_transposed:
             self.transpose_header_cb.setChecked(False)
+        self._on_params_changed()
+
+    def _on_melt_toggled(self, state):
+        is_melted = self.melt_cb.isChecked()
+        self.melt_options_container.setVisible(is_melted)
         self._on_params_changed()
 
     def _on_params_changed(self):
@@ -403,9 +472,12 @@ class SmartImportDialog(QDialog):
                     item.setTextAlignment(Qt.AlignRight if isinstance(val, (int, float, np.number)) else Qt.AlignLeft)
                     self.preview_table.setItem(r, c, item)
 
-            mode_str = "2D Matrix Grid" if params["is_2d_matrix"] else "1D Column Table"
-            if params.get("transpose", False):
-                mode_str += " (Transposed)"
+            if params.get("melt_wide", False):
+                mode_str = f"Reshaped Paired (X, Y) Table ({params.get('melt_var_name', 'X')} vs {params.get('melt_val_name', 'Y')})"
+            elif params["is_2d_matrix"]:
+                mode_str = "2D Matrix Grid" + (" (Transposed)" if params.get("transpose") else "")
+            else:
+                mode_str = "1D Column Table" + (" (Transposed)" if params.get("transpose") else "")
             self.preview_status_label.setText(
                 f"Successfully parsed as {mode_str} ({len(df.columns)} columns, {len(df)} preview rows shown)"
             )
@@ -454,4 +526,20 @@ class SmartImportDialog(QDialog):
             filepath=self.filepath,
             meta=params
         )
+
+        self.extra_datasets = []
+        if params.get("melt_wide", False) and params.get("melt_generate_stats", False) and df is not None and not df.empty:
+            var_name = params.get("melt_var_name", "Condition") or "Condition"
+            val_name = params.get("melt_val_name", "Value") or "Value"
+            stats_df = compute_group_statistics(df, var_name, val_name)
+            if not stats_df.empty:
+                summary_ds = Dataset(
+                    name=f"{name} (Mean ± Std)",
+                    data_type="1d_table",
+                    df=stats_df,
+                    filepath=self.filepath,
+                    meta={"summary_of": name, "is_summary": True}
+                )
+                self.extra_datasets.append(summary_ds)
+
         self.accept()

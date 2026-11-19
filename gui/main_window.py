@@ -20,6 +20,7 @@ from core.data_loader import sniff_file_parameters, parse_file
 from core.project_manager import (
     save_project_to_file, load_project_from_file, PROJECT_FILE_FILTER
 )
+from gui.file_dialog_helper import FileDialogHelper
 from gui.plot_canvas import PlotCanvas
 from gui.tabs.data_tab import DataTab
 from gui.tabs.plot_tab import PlotTab
@@ -399,8 +400,8 @@ class MainWindow(QMainWindow):
         """
         target_path = self.current_project_path
         if target_path is None or save_as:
-            default_name = target_path or os.path.join(os.getcwd(), "project.plotproj")
-            file_path, _ = QFileDialog.getSaveFileName(
+            default_name = target_path or "project.plotproj"
+            file_path, _ = FileDialogHelper.getSaveFileName(
                 self,
                 "Save Project State",
                 default_name,
@@ -427,7 +428,7 @@ class MainWindow(QMainWindow):
         """
         Prompts user to select a project file (.plotproj / .json) and restores the complete state.
         """
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = FileDialogHelper.getOpenFileName(
             self,
             "Open Project State",
             self.current_project_path or "",

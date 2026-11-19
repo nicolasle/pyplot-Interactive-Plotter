@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from core.models import FigureConfig, Dataset, AxisConfig, TraceConfig
 from core.data_loader import sniff_file_parameters, parse_file
 from core.code_generator import generate_python_code
+from gui.file_dialog_helper import FileDialogHelper
 
 
 class TemplateTab(QWidget):
@@ -127,7 +128,7 @@ class TemplateTab(QWidget):
         main_layout.addStretch()
 
     def _save_template(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = FileDialogHelper.getSaveFileName(
             self, "Save Plot Template", "my_plot_template.json", "JSON Files (*.json)"
         )
         if not file_path:
@@ -143,7 +144,7 @@ class TemplateTab(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to save template:\n{e}")
 
     def _load_template(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_path, _ = FileDialogHelper.getOpenFileName(
             self, "Load Plot Template", "", "JSON Files (*.json)"
         )
         if not file_path:
@@ -178,7 +179,7 @@ class TemplateTab(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to load template:\n{e}")
 
     def _select_batch_files(self):
-        files, _ = QFileDialog.getOpenFileNames(
+        files, _ = FileDialogHelper.getOpenFileNames(
             self, "Select Files for Batch Export", "",
             "Data Files (*.txt *.dat *.csv *.tsv);;All Files (*.*)"
         )
@@ -197,7 +198,7 @@ class TemplateTab(QWidget):
             QMessageBox.warning(self, "No Files", "Please add data files to process.")
             return
 
-        out_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory for Batch Export")
+        out_dir = FileDialogHelper.getExistingDirectory(self, "Select Output Directory for Batch Export")
         if not out_dir:
             return
 
