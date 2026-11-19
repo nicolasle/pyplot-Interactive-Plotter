@@ -293,6 +293,10 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         tokens = tokenize(hdr_line, best_delim)
         wide_prefix, is_wide = detect_wide_condition_columns(tokens)
 
+    # Delimiter must never be treated as comment character (e.g. leading empty cells ';;')
+    if detected_comment and detected_comment == best_delim:
+        detected_comment = None
+
     return {
         "format": "text",
         "encoding": encoding,
