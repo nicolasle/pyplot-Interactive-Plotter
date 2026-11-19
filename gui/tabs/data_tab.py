@@ -20,6 +20,7 @@ import numpy as np
 from core.models import Dataset
 from core.data_loader import evaluate_column_expression
 from gui.smart_import_dialog import SmartImportDialog
+from gui.transform_dialogs import DifferentiateDialog, SmoothingFilterDialog
 
 
 class DataTab(QWidget):
@@ -125,6 +126,25 @@ class DataTab(QWidget):
         calc_layout = QVBoxLayout(calc_box)
         calc_layout.setSpacing(6)
 
+        # Action Bar for Specialized Dialogs (Differentiation dy/dx & Smoothing Filters)
+        tools_row = QHBoxLayout()
+        tools_row.addWidget(QLabel("<b>Specialized Math Tools:</b>"))
+
+        diff_btn = QPushButton("∂y/∂x Differentiate (dy/dx)...")
+        diff_btn.setObjectName("primaryBtn")
+        diff_btn.setToolTip("Calculate the derivative of one column with respect to another (dy/dx) using centered differences")
+        diff_btn.clicked.connect(self._open_differentiate_dialog)
+        tools_row.addWidget(diff_btn)
+
+        smooth_btn = QPushButton("∿ Smoothing Filters (Gaussian, Median...)...")
+        smooth_btn.setObjectName("primaryBtn")
+        smooth_btn.setToolTip("Apply Gaussian blur, Median filter, Moving Average, or Savitzky-Golay to reduce noise")
+        smooth_btn.clicked.connect(self._open_smoothing_dialog)
+        tools_row.addWidget(smooth_btn)
+
+        tools_row.addStretch()
+        calc_layout.addLayout(tools_row)
+
         formula_row = QHBoxLayout()
         formula_row.addWidget(QLabel("New Col Name:"))
         self.new_col_edit = QLineEdit("Transformed")
@@ -133,11 +153,16 @@ class DataTab(QWidget):
 
         formula_row.addWidget(QLabel("Expression:"))
         self.expr_edit = QLineEdit()
-        self.expr_edit.setPlaceholderText("e.g. dedB(col), col * 1e3, np.log10(col), col - col.min()")
+        self.expr_edit.setPlaceholderText("e.g. diff(col_y, col_x), gaussian_filter(col, 2.0), median_filter(col, 3)")
         formula_row.addWidget(self.expr_edit)
 
         quick_combo = QComboBox()
         quick_combo.addItem("Quick Formula Templates...")
+        quick_combo.addItem("Differentiate dy/dx: diff(y, x)", "diff_yx")
+        quick_combo.addItem("Smooth (Gaussian Blur): gaussian_filter(col, 2.0)", "gaussian")
+        quick_combo.addItem("Smooth (Median Filter): median_filter(col, 3)", "median")
+        quick_combo.addItem("Smooth (Moving Average): moving_average(col, 5)", "mavg")
+        quick_combo.addItem("Smooth (Savitzky-Golay): savgol_filter(col, 7, 2)", "savgol")
         quick_combo.addItem("de-dB (Amplitude/Voltage): dedB(col)", "dedb_amp")
         quick_combo.addItem("de-dB (Power/Intensity): dedB_power(col)", "dedb_pwr")
         quick_combo.addItem("Convert to dB (Amplitude): to_dB(col)", "to_db_amp")
@@ -387,8 +412,11 @@ class DataTab(QWidget):
 
     def _insert_function(self, func_str: str):
         self.expr_edit.insert(func_str)
-        # Move cursor back 1 character if ends with '()' to place inside parentheses
-        if func_str.endswith("()"):
+        # Move cursor inside parentheses
+        if ", " in func_str:
+            pos = self.expr_edit.cursorPosition() - len(func_str) + func_str.index("(") + 1
+            self.expr_edit.setCursorPosition(pos)
+        elif func_str.endswith("()"):
             pos = self.expr_edit.cursorPosition() - 1
             self.expr_edit.setCursorPosition(pos)
         self.expr_edit.setFocus()
@@ -450,8 +478,13 @@ class DataTab(QWidget):
         sep_lbl.setStyleSheet("color: #64748b; font-weight: bold; margin: 0 4px;")
         self.vars_pills_layout.addWidget(sep_lbl)
 
-        # 2. Built-in Math & dedB Function Pills
+        # 2. Built-in Math, Differentiation & Filter Function Pills
         math_ops = [
+            ("diff(y, x)", "diff(, )", "Numerical derivative dy/dx with respect to x: diff(y, x)"),
+            ("gaussian_filter()", "gaussian_filter(, 2.0)", "Gaussian blur smoothing: gaussian_filter(col, sigma=2.0)"),
+            ("median_filter()", "median_filter(, 3)", "Median filter (spike removal): median_filter(col, size=3)"),
+            ("moving_avg()", "moving_average(, 5)", "Moving average filter: moving_average(col, window=5)"),
+            ("savgol()", "savgol_filter(, 7, 2)", "Savitzky-Golay polynomial filter: savgol_filter(col, win=7, poly=2)"),
             ("dedB()", "dedB()", "Revert dB for amplitude/voltage: 10 ** (x / 20)"),
             ("dedB_power()", "dedB_power()", "Revert dB for power/intensity: 10 ** (x / 10)"),
             ("to_dB()", "to_dB()", "Convert amplitude to dB: 20 * log10(abs(x))"),
@@ -502,7 +535,25 @@ class DataTab(QWidget):
                 col_var = f"c_{col_var}"
         
         action = combo.itemData(idx)
-        if action == "dedb_amp":
+        if action == "diff_yx":
+            # Pick first other column as X if available
+            cols = [str(c) for c in d.df.columns]
+            x_col = cols[0] if len(cols) > 0 and cols[0] != raw_col else (cols[1] if len(cols) > 1 else "col_x")
+            self.expr_edit.setText(f"diff({col_var}, {x_col})")
+            self.new_col_edit.setText(f"d_{col_var}_d_{x_col}")
+        elif action == "gaussian":
+            self.expr_edit.setText(f"gaussian_filter({col_var}, 2.0)")
+            self.new_col_edit.setText(f"{col_var}_gauss")
+        elif action == "median":
+            self.expr_edit.setText(f"median_filter({col_var}, 3)")
+            self.new_col_edit.setText(f"{col_var}_med")
+        elif action == "mavg":
+            self.expr_edit.setText(f"moving_average({col_var}, 5)")
+            self.new_col_edit.setText(f"{col_var}_mavg")
+        elif action == "savgol":
+            self.expr_edit.setText(f"savgol_filter({col_var}, 7, 2)")
+            self.new_col_edit.setText(f"{col_var}_savgol")
+        elif action == "dedb_amp":
             self.expr_edit.setText(f"dedB({col_var})")
             self.new_col_edit.setText(f"{col_var}_lin")
         elif action == "dedb_pwr":
@@ -530,10 +581,57 @@ class DataTab(QWidget):
             self.expr_edit.setText(f"np.log10(np.abs({col_var}) + 1e-12)")
             self.new_col_edit.setText(f"{col_var}_log10")
         elif action == "gradient":
-            self.expr_edit.setText(f"np.gradient({col_var})")
+            self.expr_edit.setText(f"diff({col_var})")
             self.new_col_edit.setText(f"d_{col_var}")
         
         combo.setCurrentIndex(0)
+
+    def _open_differentiate_dialog(self):
+        if not self.active_dataset_id:
+            QMessageBox.warning(self, "No Dataset", "Please select a dataset to differentiate.")
+            return
+        d = self.datasets.get(self.active_dataset_id)
+        if not d or d.df is None or d.df.empty:
+            QMessageBox.warning(self, "Empty Dataset", "Selected dataset contains no tabular data.")
+            return
+
+        current_col = self.rename_col_combo.currentText()
+        dlg = DifferentiateDialog(d, initial_y=current_col, parent=self)
+        if dlg.exec() == DifferentiateDialog.Accepted and dlg.result_data is not None:
+            new_col = dlg.new_col_name
+            d.df[new_col] = dlg.result_data
+            if not d.meta:
+                d.meta = {}
+            calc_list = d.meta.setdefault("calculated_columns", [])
+            calc_list.append({"name": new_col, "expr": dlg.formula_expr})
+
+            self._display_dataset(self.active_dataset_id)
+            self.data_changed.emit()
+            QMessageBox.information(self, "Derivative Added", f"Successfully calculated and added column '{new_col}'!")
+
+    def _open_smoothing_dialog(self):
+        if not self.active_dataset_id:
+            QMessageBox.warning(self, "No Dataset", "Please select a dataset to smooth.")
+            return
+        d = self.datasets.get(self.active_dataset_id)
+        if not d or d.df is None or d.df.empty:
+            QMessageBox.warning(self, "Empty Dataset", "Selected dataset contains no tabular data.")
+            return
+
+        current_col = self.rename_col_combo.currentText()
+        dlg = SmoothingFilterDialog(d, initial_col=current_col, parent=self)
+        if dlg.exec() == SmoothingFilterDialog.Accepted and dlg.result_data is not None:
+            target_col = dlg.target_col_name
+            d.df[target_col] = dlg.result_data
+            if not d.meta:
+                d.meta = {}
+            calc_list = d.meta.setdefault("calculated_columns", [])
+            calc_list.append({"name": target_col, "expr": dlg.formula_expr})
+
+            self._display_dataset(self.active_dataset_id)
+            self.data_changed.emit()
+            action_str = "updated" if dlg.replace_inplace else "added"
+            QMessageBox.information(self, "Filter Applied", f"Successfully {action_str} smoothed column '{target_col}'!")
 
     def _on_calculate_column(self):
         if not self.active_dataset_id:
@@ -558,6 +656,11 @@ class DataTab(QWidget):
             return
 
         d.df = new_df
+        if not d.meta:
+            d.meta = {}
+        calc_list = d.meta.setdefault("calculated_columns", [])
+        calc_list.append({"name": new_name, "expr": expr})
+
         self._display_dataset(self.active_dataset_id)
         self.data_changed.emit()
         QMessageBox.information(self, "Success", f"Column '{new_name}' added successfully!")

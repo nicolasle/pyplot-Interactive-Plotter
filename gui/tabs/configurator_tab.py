@@ -23,6 +23,7 @@ from PySide6.QtGui import QColor, QShortcut, QKeySequence
 from core.models import FigureConfig, AxisConfig, TraceConfig, ReferenceLineConfig, Dataset
 from core.presets import SECONDARY_AXIS_PRESETS
 from gui.color_dialog import ColorSelectorDialog
+from gui.transform_dialogs import DifferentiateDialog, SmoothingFilterDialog
 
 
 class ConfiguratorTab(QWidget):
@@ -664,9 +665,24 @@ class ConfiguratorTab(QWidget):
         grid.addWidget(self.tr_xcol_combo, 3, 1)
 
         grid.addWidget(QLabel("Y Channel:"), 3, 2)
+        y_channel_row = QHBoxLayout()
         self.tr_ycol_combo = QComboBox()
         self.tr_ycol_combo.currentIndexChanged.connect(self._on_trace_prop_changed)
-        grid.addWidget(self.tr_ycol_combo, 3, 3)
+        y_channel_row.addWidget(self.tr_ycol_combo, stretch=1)
+
+        diff_btn = QPushButton("∂y/∂x")
+        diff_btn.setToolTip("Differentiate this Y channel with respect to X (dy/dx)...")
+        diff_btn.setFixedWidth(44)
+        diff_btn.clicked.connect(self._quick_differentiate_trace)
+        y_channel_row.addWidget(diff_btn)
+
+        smooth_btn = QPushButton("∿")
+        smooth_btn.setToolTip("Apply smoothing filter (Gaussian blur, Median, SavGol...) to this Y channel...")
+        smooth_btn.setFixedWidth(28)
+        smooth_btn.clicked.connect(self._quick_smooth_trace)
+        y_channel_row.addWidget(smooth_btn)
+
+        grid.addLayout(y_channel_row, 3, 3)
 
         # Error bars
         grid.addWidget(QLabel("Y-Error:"), 4, 0)
@@ -1669,6 +1685,12 @@ class ConfiguratorTab(QWidget):
         dup_act = menu.addAction("📋 Duplicate Line / Channel (Ctrl+D)")
         dup_act.triggered.connect(self._duplicate_active_trace)
 
+        diff_act = menu.addAction("∂y/∂x Differentiate Channel (dy/dx)...")
+        diff_act.triggered.connect(self._quick_differentiate_trace)
+
+        smooth_act = menu.addAction("∿ Smooth Channel (Gaussian, Median...)...")
+        smooth_act.triggered.connect(self._quick_smooth_trace)
+
         del_act = menu.addAction("🗑 Delete Line / Channel")
         del_act.triggered.connect(self._delete_active_trace)
 
@@ -1678,6 +1700,76 @@ class ConfiguratorTab(QWidget):
         vis_act.triggered.connect(self._toggle_active_trace_visibility)
 
         menu.exec(self.traces_list.mapToGlobal(pos))
+
+    def _quick_differentiate_trace(self):
+        """Opens Differentiate dialog pre-populated with active trace's Y and X channels."""
+        if not self.active_trace_id:
+            QMessageBox.information(self, "No Trace", "Please select a channel/trace first.")
+            return
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        tr = next((t for t in ax_cfg.traces if t.id == self.active_trace_id), None)
+        if not tr or not tr.dataset_id:
+            QMessageBox.information(self, "No Dataset", "Selected trace has no associated dataset.")
+            return
+
+        ds = self.datasets.get(tr.dataset_id)
+        if not ds or ds.df is None or ds.df.empty:
+            QMessageBox.warning(self, "Empty Dataset", "Dataset contains no table data.")
+            return
+
+        dlg = DifferentiateDialog(ds, initial_y=tr.y_col, initial_x=tr.x_col, parent=self)
+        if dlg.exec() == DifferentiateDialog.Accepted and dlg.result_data is not None:
+            new_col = dlg.new_col_name
+            ds.df[new_col] = dlg.result_data
+            if not ds.meta:
+                ds.meta = {}
+            calc_list = ds.meta.setdefault("calculated_columns", [])
+            calc_list.append({"name": new_col, "expr": dlg.formula_expr})
+
+            # Refresh column combos in trace editor and select the new derivative column
+            self._populate_column_combos(ds.id)
+            idx = self.tr_ycol_combo.findData(new_col)
+            if idx >= 0:
+                self.tr_ycol_combo.setCurrentIndex(idx)
+            tr.y_col = new_col
+            if not tr.label or tr.label.startswith("Trace") or tr.label.startswith("Scan"):
+                tr.label = f"d({tr.label or new_col})"
+                self.tr_label_edit.setText(tr.label)
+
+            self.config_changed.emit()
+
+    def _quick_smooth_trace(self):
+        """Opens Smoothing dialog pre-populated with active trace's Y channel."""
+        if not self.active_trace_id:
+            QMessageBox.information(self, "No Trace", "Please select a channel/trace first.")
+            return
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        tr = next((t for t in ax_cfg.traces if t.id == self.active_trace_id), None)
+        if not tr or not tr.dataset_id:
+            QMessageBox.information(self, "No Dataset", "Selected trace has no associated dataset.")
+            return
+
+        ds = self.datasets.get(tr.dataset_id)
+        if not ds or ds.df is None or ds.df.empty:
+            QMessageBox.warning(self, "Empty Dataset", "Dataset contains no table data.")
+            return
+
+        dlg = SmoothingFilterDialog(ds, initial_col=tr.y_col, parent=self)
+        if dlg.exec() == SmoothingFilterDialog.Accepted and dlg.result_data is not None:
+            target_col = dlg.target_col_name
+            ds.df[target_col] = dlg.result_data
+            if not ds.meta:
+                ds.meta = {}
+            calc_list = ds.meta.setdefault("calculated_columns", [])
+            calc_list.append({"name": target_col, "expr": dlg.formula_expr})
+
+            # Refresh column combos in trace editor and select target col
+            self._populate_column_combos(ds.id)
+            idx = self.tr_ycol_combo.findData(target_col)
+            if idx >= 0:
+                self.tr_ycol_combo.setCurrentIndex(idx)
+            tr.y_col = target_col
+            self.config_changed.emit()
 
     def _toggle_active_trace_visibility(self):
         if not self.active_trace_id:

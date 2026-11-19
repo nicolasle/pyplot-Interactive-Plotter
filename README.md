@@ -22,10 +22,21 @@ The Matplotlib figure canvas remains visible on the right side across all workfl
 * **Multi-Format Experimental Data Support**: Loads `.txt`, `.csv`, `.tsv`, `.dat`, space-delimited tables, and 2D matrix grids.
 * **Intelligent File Sniffer**: Automatically detects delimiters (whitespace, tabs, commas, semicolons, pipes), skips arbitrary comment preambles (`#`, `%`, `//`, `;`), extracts embedded column headers, and auto-detects European decimal commas (`1,05` vs `1.05`).
 * **Interactive Correction Wizard**: Side-by-side dialog featuring the raw text file with line numbers on the left and a live-parsed DataFrame preview table at the bottom. Adjust skip rows, delimiters, headers, or decimal marks with real-time preview before importing.
-* **In-Line Column Transformations**: Apply mathematical operations on columns without modifying raw files:
-  * One-click presets: Offset, Scale, $\log_{10}(x)$, $\ln(x)$, Normalize to $[0, 1]$, and Numerical Derivative $\frac{\mathrm{d}y}{\mathrm{d}x}$.
-  * Custom Python formulas: e.g. `col * 1e3`, `np.sqrt(x)`, `np.exp(-y / 10)`.
-* **Safe Column Renaming**: Renaming a column automatically updates all assigned plot traces across all subplots.
+* **Specialized Differentiation Wizard (`∂y/∂x Differentiate...`)**:
+  * Differentiate one column $Y$ with respect to another column $X$ ($\frac{\mathrm{d}y}{\mathrm{d}x}$) using second-order accurate centered differences.
+  * Native non-uniform grid spacing support via `np.gradient(y, x)`.
+  * Optional pre-smoothing (Gaussian blur) before differentiation to suppress measurement noise amplification.
+  * Live calculation preview table showing $X$, $Y$, and $\frac{\mathrm{d}y}{\mathrm{d}x}$ before adding to dataset.
+* **Specialized Smoothing Filters Wizard (`∿ Smoothing Filters...`)**:
+  * **Gaussian Blur / Filter** (`gaussian_filter`): Gaussian convolution with adjustable standard deviation $\sigma$ in sample points.
+  * **Median Filter** (`median_filter`): Nonlinear order-statistic filter for salt-and-pepper noise and outlier/spike rejection without blurring sharp edges.
+  * **Moving Average** (`moving_average`): Centered sliding window rolling mean with adjustable window width.
+  * **Savitzky-Golay Polynomial Filter** (`savgol_filter`): Local least-squares polynomial fit preserving peak heights, widths, and shapes.
+  * Interactive controls: adjustable parameters, add as new column or replace in-place, and live 8-row preview table with RMS noise reduction readout.
+* **In-Line Column Math & Transformation Calculator**:
+  * Formula templates: $\frac{\mathrm{d}y}{\mathrm{d}x}$ derivative, Gaussian blur, median filter, moving average, Savitzky-Golay, de-dB (`dedB`, `dedB_power`), dB conversion (`to_dB`, `to_dB_power`), offset, scaling, normalization to $[0, 1]$, and $\log_{10}$.
+  * Clickable variable chips and math operation pills for rapid formula building.
+* **Safe Column Renaming & Transpose**: Renaming a column automatically updates all assigned plot traces across all subplots. One-click dataset transposition (swapping rows and columns).
 
 ---
 
@@ -60,6 +71,7 @@ Allows in-depth customization of the active subplot selected via dropdown or can
   * Dedicated quick-select bar containing all 10 standard Matplotlib categorical colors (`tab:blue`, `tab:orange`, `tab:green`, `tab:red`, `tab:purple`, `tab:brown`, `tab:pink`, `tab:gray`, `tab:olive`, `tab:cyan`) with name and hex tooltips.
   * Pre-populated Custom Colors grid and full cross-platform color dialog with HTML Hex and RGB/HSV controls.
 * **Dual Y-Axis (TwinX)**: Assign any 1D trace or baseline to a secondary $Y$-axis (`twinx()`) with independent scale and limits. Right-axis tick marks appear automatically for TwinX and cleanly disappear when TwinX is removed.
+* **Direct Differentiation (`∂y/∂x`) & Smoothing (`∿`) from Configurator**: Quick buttons directly beside the Y Channel dropdown to differentiate or smooth the active trace on the fly, immediately updating the trace and live figure.
 
 #### Sub-tab 3.2: Baselines & Reference Lines
 * Add horizontal/vertical threshold lines (`axhline`, `axvline`) or highlighted regions/bands (`axhspan`, `axvspan`).
@@ -140,7 +152,7 @@ Install all required packages via `pip`:
 pip install -r requirements.txt
 ```
 
-*(Alternatively, install the core packages directly: `pip install PySide6 matplotlib numpy pandas nbformat`)*
+*(Alternatively, install the core packages directly: `pip install PySide6 matplotlib numpy pandas scipy nbformat`)*
 
 ---
 
@@ -180,6 +192,7 @@ Interactive plotter/
 │   ├── main_window.py          # Main PySide6 window with persistent live plot splitter
 │   ├── plot_canvas.py          # Embedded Matplotlib canvas with click-to-select
 │   ├── color_dialog.py         # Color selector with Matplotlib tab10 palette
+│   ├── transform_dialogs.py    # Differentiate (dy/dx) & Smoothing (Gaussian, Median...) dialogs
 │   ├── smart_import_dialog.py  # Interactive import wizard with raw & live parsed preview
 │   ├── styles.py               # Modern dark scientific UI stylesheet
 │   └── tabs/

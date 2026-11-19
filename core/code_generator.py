@@ -5,6 +5,7 @@ and Jupyter Notebooks (.ipynb) directly from the current FigureConfig and Datase
 """
 
 import json
+import re
 from typing import Dict, Any, Optional
 import nbformat as nbf
 from core.models import FigureConfig, AxisConfig, TraceConfig, Dataset
@@ -42,6 +43,45 @@ def generate_python_code(
     lines.append('')
     lines.append('def to_dB(x, mode=20):')
     lines.append('    return float(mode) * np.log10(np.abs(np.asarray(x, dtype=float)) + 1e-18)')
+    lines.append('')
+    lines.append('# Helper functions for data differentiation and smoothing filters')
+    lines.append('def diff(y, x=None):')
+    lines.append('    """Numerical derivative dy/dx using second-order centered differences."""')
+    lines.append('    y_arr = np.asarray(y, dtype=float)')
+    lines.append('    if x is not None:')
+    lines.append('        return np.gradient(y_arr, np.asarray(x, dtype=float))')
+    lines.append('    return np.gradient(y_arr)')
+    lines.append('')
+    lines.append('def gaussian_filter(x, sigma=1.0):')
+    lines.append('    """Gaussian blur smoothing filter."""')
+    lines.append('    try:')
+    lines.append('        from scipy.ndimage import gaussian_filter1d')
+    lines.append('        return gaussian_filter1d(np.asarray(x, dtype=float), sigma=float(sigma))')
+    lines.append('    except ImportError:')
+    lines.append('        r = max(1, int(np.ceil(3.0 * float(sigma))))')
+    lines.append('        k = np.exp(-0.5 * (np.arange(-r, r + 1) / float(sigma)) ** 2)')
+    lines.append('        k /= k.sum()')
+    lines.append('        return np.convolve(np.pad(np.asarray(x, dtype=float), r, mode="reflect"), k, mode="same")[r:-r]')
+    lines.append('')
+    lines.append('def median_filter(x, size=3):')
+    lines.append('    """Median filter for spike / outlier removal."""')
+    lines.append('    try:')
+    lines.append('        from scipy.signal import medfilt')
+    lines.append('        return medfilt(np.asarray(x, dtype=float), kernel_size=int(size))')
+    lines.append('    except ImportError:')
+    lines.append('        return pd.Series(x).rolling(window=int(size), center=True, min_periods=1).median().to_numpy()')
+    lines.append('')
+    lines.append('def moving_average(x, window=5):')
+    lines.append('    """Moving average (rolling mean) filter."""')
+    lines.append('    return pd.Series(x).rolling(window=max(1, int(window)), center=True, min_periods=1).mean().to_numpy()')
+    lines.append('')
+    lines.append('def savgol_filter(x, window_length=7, polyorder=2):')
+    lines.append('    """Savitzky-Golay polynomial smoothing filter."""')
+    lines.append('    try:')
+    lines.append('        from scipy.signal import savgol_filter as _sg')
+    lines.append('        return _sg(np.asarray(x, dtype=float), window_length=int(window_length), polyorder=int(polyorder))')
+    lines.append('    except ImportError:')
+    lines.append('        return moving_average(x, window_length)')
     lines.append('')
 
     # Styling block
@@ -169,6 +209,24 @@ def generate_python_code(
                 lines.append('})')
             else:
                 lines.append(f'{var_name} = np.zeros((20, 20))')
+
+        # Calculated and transformed columns (differentiation, smoothing, formulas)
+        if d.data_type == "1d_table" and d.meta and "calculated_columns" in d.meta:
+            lines.append(f'# Calculated & transformed columns for {d.name}')
+            for item in d.meta.get("calculated_columns", []):
+                c_name = item.get("name")
+                c_expr = item.get("expr", "")
+                if c_name and c_expr:
+                    formatted_expr = c_expr
+                    if d.df is not None:
+                        for col in d.df.columns:
+                            if col != c_name:
+                                pattern = r'\b' + re.escape(str(col)) + r'\b'
+                                formatted_expr = re.sub(pattern, f'{var_name}["{col}"]', formatted_expr)
+                    lines.append(f'try:')
+                    lines.append(f'    {var_name}["{c_name}"] = {formatted_expr}')
+                    lines.append(f'except Exception:')
+                    lines.append(f'    pass')
         lines.append('')
 
     # Figure initialization block
