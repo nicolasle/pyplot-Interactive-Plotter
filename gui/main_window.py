@@ -15,8 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QLocale, QObject, QEvent, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
 
-from core.models import FigureConfig, Dataset, TraceConfig
-from core.data_loader import sniff_file_parameters, parse_file
+from core.models import FigureConfig, Dataset
 from core.project_manager import (
     save_project_to_file, load_project_from_file, PROJECT_FILE_FILTER
 )
@@ -88,9 +87,6 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_menu_and_toolbar()
         self._connect_signals()
-
-        # Load initial sample data for immediate interactive exploration
-        self._load_sample_data()
 
         # Update initial window title
         self._update_window_title()
@@ -217,52 +213,6 @@ class MainWindow(QMainWindow):
             self.plot_canvas.render(self.fig_config, self.datasets)
         except Exception as e:
             self.statusBar.showMessage(f"Render warning: {e}", 5000)
-
-    def _load_sample_data(self):
-        """Pre-loads sample files if present so user has immediate data to explore."""
-        sample_files = [
-            "sample_data/spectrum_with_comments.txt",
-            "sample_data/messy_whitespace_no_header.dat",
-            "sample_data/surface_map_2d.txt"
-        ]
-
-        for s_file in sample_files:
-            if os.path.exists(s_file):
-                base = os.path.splitext(os.path.basename(s_file))[0]
-                sniff = sniff_file_parameters(s_file)
-                df, mat, err = parse_file(s_file, sniff)
-                if not err:
-                    d_type = "2d_matrix" if "2d" in base else "1d_table"
-                    ds = Dataset(name=base, data_type=d_type, df=df, matrix=mat, filepath=s_file, meta=sniff)
-                    self.datasets[ds.id] = ds
-
-        # Refresh dataset tab
-        self.data_tab.refresh_dataset_list()
-
-        # Configure default trace on subplot (0, 0)
-        spec_ds = next((d for d in self.datasets.values() if "spectrum" in d.name), None)
-        if spec_ds and spec_ds.df is not None and len(spec_ds.df.columns) >= 2:
-            ax0 = self.fig_config.get_axis(0, 0)
-            ax0.title = "Optical Emission Spectrum"
-            ax0.xlabel = "Wavelength $\\lambda$ (nm)"
-            ax0.ylabel = "Intensity (a.u.)"
-            ax0.grid_major = False
-            
-            tr = TraceConfig(
-                name="Scan 1",
-                dataset_id=spec_ds.id,
-                plot_type="line+scatter",
-                x_col=spec_ds.df.columns[0],
-                y_col=spec_ds.df.columns[1],
-                yerr_col=spec_ds.df.columns[2] if len(spec_ds.df.columns) > 2 else None,
-                color="#3b82f6",
-                marker="o",
-                markersize=5.0,
-                linewidth=1.8,
-                label="Sample A"
-            )
-            ax0.traces.append(tr)
-            self.config_tab.refresh_subplot_selector()
 
     def _setup_menu_and_toolbar(self):
         """Constructs top application menu bar and quick project toolbar."""
