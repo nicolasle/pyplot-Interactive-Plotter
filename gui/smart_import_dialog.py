@@ -6,7 +6,7 @@ Allows immediate user correction of delimiter, headers, skiprows, and decimal ma
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QCheckBox, QTableWidget, QTableWidgetItem,
@@ -33,17 +33,19 @@ class SmartImportDialog(QDialog):
         self.resize(1050, 720)
 
         self.filepath = filepath
+        self.filepaths: List[str] = [filepath] if filepath else []
         self.sniffed_params: Dict[str, Any] = {}
         self.current_df: Optional[pd.DataFrame] = None
         self.current_matrix: Optional[np.ndarray] = None
         self.imported_dataset: Optional[Dataset] = None
+        self.imported_datasets: List[Dataset] = []
         self.extra_datasets = []
         self.custom_column_names: Dict[str, str] = {}
 
         self._setup_ui()
 
         if self.filepath and os.path.exists(self.filepath):
-            self.load_file(self.filepath)
+            self.load_files([self.filepath])
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -53,9 +55,14 @@ class SmartImportDialog(QDialog):
         file_bar = QHBoxLayout()
         self.file_label = QLabel("File: No file selected")
         self.file_label.setStyleSheet("font-weight: 600; color: #60a5fa;")
-        browse_btn = QPushButton("Browse File...")
+        self.file_preview_combo = QComboBox()
+        self.file_preview_combo.setMinimumWidth(240)
+        self.file_preview_combo.setVisible(False)
+        self.file_preview_combo.currentIndexChanged.connect(self._on_preview_file_changed)
+        browse_btn = QPushButton("Browse File(s)...")
         browse_btn.clicked.connect(self._on_browse)
         file_bar.addWidget(self.file_label)
+        file_bar.addWidget(self.file_preview_combo)
         file_bar.addStretch()
         file_bar.addWidget(browse_btn)
         main_layout.addLayout(file_bar)
@@ -116,8 +123,21 @@ class SmartImportDialog(QDialog):
 
         # Header checkbox
         self.header_cb = QCheckBox("First non-skipped row has column names (Headers)")
-        self.header_cb.stateChanged.connect(self._on_params_changed)
+        self.header_cb.stateChanged.connect(self._on_header_toggled)
         ctrl_layout.addWidget(self.header_cb)
+
+        # Skip rows after header (e.g. Origin units & comments)
+        after_hdr_layout = QHBoxLayout()
+        after_hdr_layout.addWidget(QLabel("Skip rows after header (units/comments):"))
+        self.skip_after_header_spin = QSpinBox()
+        self.skip_after_header_spin.setRange(0, 100)
+        self.skip_after_header_spin.setValue(0)
+        self.skip_after_header_spin.setToolTip(
+            "Number of metadata rows (e.g. Origin units & comments) between the header row and numeric data"
+        )
+        self.skip_after_header_spin.valueChanged.connect(self._on_params_changed)
+        after_hdr_layout.addWidget(self.skip_after_header_spin)
+        ctrl_layout.addLayout(after_hdr_layout)
 
         # Comment Prefix
         c_layout = QHBoxLayout()
@@ -267,20 +287,63 @@ class SmartImportDialog(QDialog):
         main_layout.addLayout(action_bar)
 
     def _on_browse(self):
-        file_path, _ = FileDialogHelper.getOpenFileName(
+        file_paths, _ = FileDialogHelper.getOpenFileNames(
             self,
-            "Select Scientific Data File",
+            "Select Scientific Data File(s)",
             "",
             "All Supported (*.txt *.dat *.csv *.tsv *.xlsx *.xls *.npy *.npz);;Text/CSV Files (*.txt *.dat *.csv *.tsv);;NumPy Arrays (*.npy *.npz);;Excel (*.xlsx *.xls);;All Files (*.*)"
         )
-        if file_path:
-            self.load_file(file_path)
+        if file_paths:
+            self.load_files(file_paths)
 
-    def load_file(self, filepath: str):
+    def load_files(self, filepaths: List[str]):
+        valid_paths = [fp for fp in filepaths if fp and os.path.exists(fp)]
+        if not valid_paths:
+            return
+        self.filepaths = valid_paths
+        self.custom_column_names = {}
+        FileDialogHelper.set_last_dir(valid_paths[0])
+
+        is_multi = len(valid_paths) > 1
+        self.file_preview_combo.blockSignals(True)
+        self.file_preview_combo.clear()
+        for fp in valid_paths:
+            self.file_preview_combo.addItem(os.path.basename(fp), fp)
+        self.file_preview_combo.setCurrentIndex(0)
+        self.file_preview_combo.blockSignals(False)
+        self.file_preview_combo.setVisible(is_multi)
+
+        if is_multi:
+            self.file_label.setText(f"Files ({len(valid_paths)} selected) — Preview:")
+            self.dataset_name_edit.setText("<Auto from filename>")
+            self.dataset_name_edit.setEnabled(False)
+            self.import_btn.setText(f"Import {len(valid_paths)} Datasets")
+        else:
+            self.dataset_name_edit.setEnabled(True)
+            self.import_btn.setText("Import Dataset")
+
+        self.load_file(valid_paths[0], keep_list=True)
+
+    def _on_preview_file_changed(self, index: int):
+        if index < 0:
+            return
+        fp = self.file_preview_combo.itemData(index)
+        if fp and os.path.exists(fp):
+            self.load_file(fp, keep_list=True)
+
+    def load_file(self, filepath: str, keep_list: bool = False):
         self.filepath = filepath
+        if not keep_list:
+            self.filepaths = [filepath]
+            self.custom_column_names = {}
+            self.file_preview_combo.setVisible(False)
+            self.dataset_name_edit.setEnabled(True)
+            self.import_btn.setText("Import Dataset")
+
         FileDialogHelper.set_last_dir(filepath)
-        self.file_label.setText(f"File: {os.path.basename(filepath)}")
-        self.dataset_name_edit.setText(os.path.splitext(os.path.basename(filepath))[0])
+        if len(self.filepaths) <= 1:
+            self.file_label.setText(f"File: {os.path.basename(filepath)}")
+            self.dataset_name_edit.setText(os.path.splitext(os.path.basename(filepath))[0])
 
         # Sniff parameters
         self.sniffed_params = sniff_file_parameters(filepath)
@@ -310,7 +373,13 @@ class SmartImportDialog(QDialog):
         self.skiprows_spin.setValue(p.get("skiprows", 0))
 
         # Header
-        self.header_cb.setChecked(p.get("has_header", False))
+        has_hdr = p.get("has_header", False)
+        self.header_cb.setChecked(has_hdr)
+
+        # Skip rows after header (units/comments)
+        skip_after = p.get("skip_after_header", 0)
+        self.skip_after_header_spin.setValue(skip_after)
+        self.skip_after_header_spin.setEnabled(has_hdr)
 
         # Comment
         comment = p.get("comment", None)
@@ -364,6 +433,8 @@ class SmartImportDialog(QDialog):
             f"Auto-Detected: {delim_desc} delimiter | {header_desc} | "
             f"Skip {p.get('skiprows', 0)} rows | Decimal: '{p.get('decimal', '.')}'"
         )
+        if p.get("skip_after_header", 0) > 0:
+            status_msg += f" | +{p.get('skip_after_header')} unit/comment rows skipped"
         if is_wide:
             status_msg += f"\n💡 Detected repetition columns with '{prefix}'. Check 'Reshape / Unpivot' below to plot paired (X, Y)."
         self.sniff_status.setText(status_msg)
@@ -392,6 +463,7 @@ class SmartImportDialog(QDialog):
         return {
             "delimiter": delimiter,
             "skiprows": self.skiprows_spin.value(),
+            "skip_after_header": self.skip_after_header_spin.value() if self.header_cb.isChecked() else 0,
             "has_header": self.header_cb.isChecked(),
             "comment": comment,
             "decimal": self.decimal_combo.currentData(),
@@ -405,6 +477,10 @@ class SmartImportDialog(QDialog):
             "melt_generate_stats": self.melt_stats_cb.isChecked(),
             "encoding": self.sniffed_params.get("encoding", "utf-8")
         }
+
+    def _on_header_toggled(self, state):
+        self.skip_after_header_spin.setEnabled(self.header_cb.isChecked())
+        self._on_params_changed()
 
     def _on_transpose_toggled(self, state):
         is_transposed = self.transpose_cb.isChecked()
@@ -501,45 +577,70 @@ class SmartImportDialog(QDialog):
             self.preview_table.setHorizontalHeaderLabels([str(c) for c in self.current_df.columns])
 
     def _on_import_confirmed(self):
-        """Full load without row limit, builds Dataset object, and accepts dialog."""
-        if not self.filepath:
+        """Full load without row limit, builds Dataset object(s), and accepts dialog."""
+        targets = self.filepaths if self.filepaths else ([self.filepath] if self.filepath else [])
+        if not targets:
             return
-        
+
         params = self._get_current_params()
-        df, matrix, err = parse_file(self.filepath, params, max_rows=None)
+        data_type = "2d_matrix" if params["is_2d_matrix"] else "1d_table"
+        is_multi = len(targets) > 1
 
-        if err:
-            QMessageBox.critical(self, "Import Error", f"Failed to parse complete file:\n{err}")
+        self.imported_datasets = []
+        self.imported_dataset = None
+        self.extra_datasets = []
+        errors = []
+
+        for fp in targets:
+            df, matrix, err = parse_file(fp, params, max_rows=None)
+            if err:
+                errors.append(f"{os.path.basename(fp)}: {err}")
+                continue
+
+            if df is not None and self.custom_column_names:
+                df.rename(columns=self.custom_column_names, inplace=True)
+
+            base_name = os.path.splitext(os.path.basename(fp))[0]
+            name = base_name if is_multi else (self.dataset_name_edit.text().strip() or base_name)
+
+            ds = Dataset(
+                name=name,
+                data_type=data_type,
+                df=df,
+                matrix=matrix,
+                filepath=fp,
+                meta=dict(params)
+            )
+            self.imported_datasets.append(ds)
+
+            if params.get("melt_wide", False) and params.get("melt_generate_stats", False) and df is not None and not df.empty:
+                var_name = params.get("melt_var_name", "Condition") or "Condition"
+                val_name = params.get("melt_val_name", "Value") or "Value"
+                stats_df = compute_group_statistics(df, var_name, val_name)
+                if not stats_df.empty:
+                    summary_ds = Dataset(
+                        name=f"{name} (Mean ± Std)",
+                        data_type="1d_table",
+                        df=stats_df,
+                        filepath=fp,
+                        meta={"summary_of": name, "is_summary": True}
+                    )
+                    self.extra_datasets.append(summary_ds)
+
+        if not self.imported_datasets:
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                "Failed to parse selected file(s):\n" + "\n".join(errors)
+            )
             return
 
-        if df is not None and self.custom_column_names:
-            df.rename(columns=self.custom_column_names, inplace=True)
-
-        data_type = "2d_matrix" if params["is_2d_matrix"] else "1d_table"
-        name = self.dataset_name_edit.text().strip() or os.path.splitext(os.path.basename(self.filepath))[0]
-
-        self.imported_dataset = Dataset(
-            name=name,
-            data_type=data_type,
-            df=df,
-            matrix=matrix,
-            filepath=self.filepath,
-            meta=params
-        )
-
-        self.extra_datasets = []
-        if params.get("melt_wide", False) and params.get("melt_generate_stats", False) and df is not None and not df.empty:
-            var_name = params.get("melt_var_name", "Condition") or "Condition"
-            val_name = params.get("melt_val_name", "Value") or "Value"
-            stats_df = compute_group_statistics(df, var_name, val_name)
-            if not stats_df.empty:
-                summary_ds = Dataset(
-                    name=f"{name} (Mean ± Std)",
-                    data_type="1d_table",
-                    df=stats_df,
-                    filepath=self.filepath,
-                    meta={"summary_of": name, "is_summary": True}
-                )
-                self.extra_datasets.append(summary_ds)
+        self.imported_dataset = self.imported_datasets[0]
+        if errors:
+            QMessageBox.warning(
+                self,
+                "Partial Import Warning",
+                f"Imported {len(self.imported_datasets)} file(s), but {len(errors)} failed:\n" + "\n".join(errors)
+            )
 
         self.accept()

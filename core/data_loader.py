@@ -149,10 +149,10 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
 
     if not data_line_indices:
         skiprows = 0
-        candidate_lines = sample_lines
+        candidate_lines = [line.rstrip("\r\n") for line in sample_lines]
     else:
-        # Pre-filter candidate lines
-        candidate_lines = [sample_lines[i].strip() for i in data_line_indices]
+        # Pre-filter candidate lines (preserve leading/trailing delimiters like tabs)
+        candidate_lines = [sample_lines[i].rstrip("\r\n") for i in data_line_indices]
 
     # Step 3: Check Decimal Mark (European ',' vs Standard '.')
     # Look for patterns like digit,digit vs digit.digit in non-comment lines
@@ -203,9 +203,9 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
     if min_variance > 10 and best_col_count <= 1:
         best_delim = r"\s+"
 
-    # Step 5: Detect Skiprows and Header
-    # Examine first few candidate lines
+    # Step 5: Detect Skiprows, Header, and Origin-style metadata rows after header
     skiprows = 0
+    skip_after_header = 0
     has_header = False
     header_row = None
 
@@ -214,39 +214,34 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         first_candidate_idx = data_line_indices[0] if data_line_indices else 0
         skiprows = first_candidate_idx
 
-        # Check if first candidate row is header (strings) and next rows are numbers
         def tokenize(line_str, delim):
             if delim == r"\s+":
                 return re.split(r"\s+", line_str.strip())
             return line_str.split(delim)
 
-        tokens_row0 = tokenize(candidate_lines[0], best_delim)
-        numeric_count_row0 = sum(is_numeric_token(t, detected_decimal) for t in tokens_row0)
-        
-        if len(candidate_lines) > 1:
-            tokens_row1 = tokenize(candidate_lines[1], best_delim)
-            numeric_count_row1 = sum(is_numeric_token(t, detected_decimal) for t in tokens_row1)
-        else:
-            numeric_count_row1 = 0
+        # Find the first candidate row that is predominantly numeric
+        first_numeric_idx = -1
+        for idx, line in enumerate(candidate_lines):
+            tokens = tokenize(line, best_delim)
+            non_empty = [t for t in tokens if t.strip() != ""]
+            if not non_empty:
+                continue
+            num_c = sum(is_numeric_token(t, detected_decimal) for t in non_empty)
+            threshold = 0.6 if len(tokens) > 1 else 1.0
+            if (num_c / len(non_empty)) >= threshold:
+                first_numeric_idx = idx
+                break
 
-        total_tokens0 = max(1, len(tokens_row0))
-        total_tokens1 = max(1, len(tokens_row1)) if len(candidate_lines) > 1 else 1
-
-        # If row 0 is mostly strings (< 50% numbers) but row 1 is mostly numbers (> 70% numbers)
-        if (numeric_count_row0 / total_tokens0 < 0.5) and (numeric_count_row1 / total_tokens1 >= 0.6):
-            has_header = True
-            header_row = skiprows
-        elif (numeric_count_row0 / total_tokens0 >= 0.6):
+        if first_numeric_idx == 0:
             # Row 0 itself is already numeric -> check if the line immediately before it (in comments) was a header!
+            tokens_row0 = tokenize(candidate_lines[0], best_delim)
             if first_candidate_idx > 0 and detected_comment:
                 prev_line = sample_lines[first_candidate_idx - 1].strip()
                 if prev_line.startswith(detected_comment):
-                    # Strip comment char and check tokens
                     stripped_prev = prev_line.lstrip(detected_comment).strip()
                     prev_tokens = tokenize(stripped_prev, best_delim)
                     prev_num_c = sum(is_numeric_token(t, detected_decimal) for t in prev_tokens)
-                    if len(prev_tokens) == len(tokens_row0) and (prev_num_c / len(prev_tokens) < 0.5):
-                        # The line before is a header commented out!
+                    if len(prev_tokens) == len(tokens_row0) and (prev_num_c / max(1, len(prev_tokens)) < 0.5):
                         has_header = True
                         header_row = first_candidate_idx - 1
                         skiprows = first_candidate_idx - 1
@@ -255,29 +250,34 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
             if not has_header:
                 has_header = False
                 header_row = None
-        else:
-            # Check if line 0 might be a title / preamble string
-            # Find the first row that is predominantly numeric
-            found_numeric_idx = -1
-            for idx, line in enumerate(candidate_lines):
-                tokens = tokenize(line, best_delim)
-                num_c = sum(is_numeric_token(t, detected_decimal) for t in tokens)
-                if len(tokens) > 1 and (num_c / len(tokens)) >= 0.7:
-                    found_numeric_idx = idx
+        elif first_numeric_idx > 0:
+            # There are 1 or more non-numeric rows before the first numeric data row.
+            # This covers standard 1-row headers AND Origin-style multi-row headers (Name / Units / Comments).
+            num_data_cols = len(tokenize(candidate_lines[first_numeric_idx], best_delim))
+            hdr_cand_idx = None
+            for idx in range(first_numeric_idx):
+                cand_tokens = tokenize(candidate_lines[idx], best_delim)
+                non_empty_count = sum(1 for t in cand_tokens if t.strip() != "")
+                if len(cand_tokens) == num_data_cols and non_empty_count > 0:
+                    hdr_cand_idx = idx
                     break
-            
-            if found_numeric_idx > 0:
-                # The row before the first numeric row could be the header!
-                potential_hdr = candidate_lines[found_numeric_idx - 1]
-                hdr_tokens = tokenize(potential_hdr, best_delim)
-                if len(hdr_tokens) == len(tokenize(candidate_lines[found_numeric_idx], best_delim)):
-                    has_header = True
-                    header_row = data_line_indices[found_numeric_idx - 1]
-                    skiprows = data_line_indices[found_numeric_idx - 1]
-                else:
-                    has_header = False
-                    skiprows = data_line_indices[found_numeric_idx]
-                    header_row = None
+
+            # Fallback: if no exact column-count match, check the row immediately before data
+            if hdr_cand_idx is None:
+                prev_tokens = tokenize(candidate_lines[first_numeric_idx - 1], best_delim)
+                if len(prev_tokens) == num_data_cols:
+                    hdr_cand_idx = first_numeric_idx - 1
+
+            if hdr_cand_idx is not None:
+                has_header = True
+                header_row = data_line_indices[hdr_cand_idx] if data_line_indices else hdr_cand_idx
+                skiprows = header_row
+                data_start_line = data_line_indices[first_numeric_idx] if data_line_indices else first_numeric_idx
+                skip_after_header = max(0, data_start_line - header_row - 1)
+            else:
+                has_header = False
+                skiprows = data_line_indices[first_numeric_idx] if data_line_indices else first_numeric_idx
+                header_row = None
 
     # Step 6: 2D Matrix detection
     # If all values are numeric, no headers, and columns > 5
@@ -302,6 +302,7 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         "encoding": encoding,
         "delimiter": best_delim,
         "skiprows": skiprows,
+        "skip_after_header": skip_after_header,
         "has_header": has_header,
         "header_row": header_row,
         "comment": detected_comment,
@@ -517,10 +518,16 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
     # 2. Excel format
     if ext in [".xlsx", ".xls"]:
         try:
-            skiprows = params.get("skiprows", 0)
+            skiprows = int(params.get("skiprows", 0) or 0)
+            skip_after_header = int(params.get("skip_after_header", 0) or 0)
             has_header = params.get("has_header", True)
             header = 0 if has_header else None
-            df = pd.read_excel(filepath, skiprows=skiprows, header=header, nrows=max_rows)
+            skiprows_arg = (
+                list(range(skiprows)) + list(range(skiprows + 1, skiprows + 1 + skip_after_header))
+                if has_header and skip_after_header > 0
+                else skiprows
+            )
+            df = pd.read_excel(filepath, skiprows=skiprows_arg, header=header, nrows=max_rows)
             if not has_header:
                 df.columns = [f"Col {i}" for i in range(df.shape[1])]
             if params.get("transpose", False):
@@ -547,7 +554,8 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
     # 3. Text/CSV/TSV/DAT format
     try:
         delimiter = params.get("delimiter", r"\s+")
-        skiprows = params.get("skiprows", 0)
+        skiprows = int(params.get("skiprows", 0) or 0)
+        skip_after_header = int(params.get("skip_after_header", 0) or 0)
         has_header = params.get("has_header", False)
         header_row = 0 if has_header else None
         comment = params.get("comment", None)
@@ -559,11 +567,17 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
         engine = "python" if delimiter in [r"\s+", "whitespace", None] or len(delimiter) > 1 else "c"
         sep = r"\s+" if delimiter in [r"\s+", "whitespace"] else delimiter
 
+        skiprows_arg = (
+            list(range(skiprows)) + list(range(skiprows + 1, skiprows + 1 + skip_after_header))
+            if has_header and skip_after_header > 0
+            else skiprows
+        )
+
         # When skipping rows with comment, let pandas handle comment or skiprows
         df = pd.read_csv(
             filepath,
             sep=sep,
-            skiprows=skiprows,
+            skiprows=skiprows_arg,
             header=header_row,
             comment=comment,
             decimal=decimal,

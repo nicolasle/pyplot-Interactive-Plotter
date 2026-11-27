@@ -279,7 +279,7 @@ class DataTab(QWidget):
         top_layout = QVBoxLayout(top_box)
 
         btn_row = QHBoxLayout()
-        import_btn = QPushButton("+ Smart Import Data File...")
+        import_btn = QPushButton("+ Smart Import Data File(s)...")
         import_btn.setObjectName("primaryBtn")
         import_btn.clicked.connect(self._open_smart_importer)
 
@@ -443,12 +443,17 @@ class DataTab(QWidget):
 
     def _open_smart_importer(self):
         dialog = SmartImportDialog(parent=self)
-        if dialog.exec() == SmartImportDialog.Accepted and dialog.imported_dataset:
-            ds = dialog.imported_dataset
-            self.datasets[ds.id] = ds
+        if dialog.exec() == SmartImportDialog.Accepted:
+            datasets_to_add = getattr(dialog, "imported_datasets", None) or (
+                [dialog.imported_dataset] if dialog.imported_dataset else []
+            )
+            if not datasets_to_add:
+                return
+            for ds in datasets_to_add:
+                self.datasets[ds.id] = ds
             for extra in getattr(dialog, "extra_datasets", []):
                 self.datasets[extra.id] = extra
-            self.refresh_dataset_list(select_id=ds.id)
+            self.refresh_dataset_list(select_id=datasets_to_add[0].id)
             self.data_changed.emit()
 
     def add_dataset(self, ds: Dataset):
