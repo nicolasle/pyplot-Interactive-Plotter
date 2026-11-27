@@ -1175,9 +1175,30 @@ class ConfiguratorTab(QWidget):
     def _on_trace_dataset_changed(self):
         if self._block_signals:
             return
+        prev_x = self.tr_xcol_combo.currentData()
+        prev_y = self.tr_ycol_combo.currentData()
+        prev_yerr = self.tr_yerr_combo.currentData()
+        prev_xerr = self.tr_xerr_combo.currentData()
+
         self._block_signals = True
         d_id = self.tr_dataset_combo.currentData()
         self._populate_column_combos(d_id)
+
+        for combo, prev_val in (
+            (self.tr_xcol_combo, prev_x),
+            (self.tr_ycol_combo, prev_y),
+            (self.tr_yerr_combo, prev_yerr),
+            (self.tr_xerr_combo, prev_xerr),
+        ):
+            if prev_val:
+                idx = combo.findData(prev_val)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+
+        ds = self.datasets.get(d_id)
+        if ds:
+            self.tr_label_edit.setText(ds.name)
+
         self._block_signals = False
         self._on_trace_prop_changed()
 
@@ -1589,7 +1610,7 @@ class ConfiguratorTab(QWidget):
             plot_type="line",
             x_col=x_col,
             y_col=y_col,
-            label=f"Channel {len(ax_cfg.traces)+1}"
+            label=ds.name if ds else f"Channel {len(ax_cfg.traces)+1}"
         )
         ax_cfg.traces.append(new_tr)
         self._refresh_traces_list(select_trace_id=new_tr.id)
