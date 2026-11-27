@@ -114,6 +114,9 @@ class ConfiguratorTab(QWidget):
         list_layout.addLayout(action_row)
 
         self.traces_list = QListWidget()
+        self.traces_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.traces_list.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.traces_list.model().rowsMoved.connect(self._on_traces_reordered)
         self.traces_list.currentRowChanged.connect(self._on_trace_selection_changed)
         self.traces_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.traces_list.customContextMenuRequested.connect(self._show_trace_context_menu)
@@ -982,6 +985,7 @@ class ConfiguratorTab(QWidget):
             axis_badge = "[TwinX]" if tr.twin_axis == "twinx" else "[Primary]"
             item = QListWidgetItem(f"{vis_badge} {axis_badge} ({tr.plot_type}) {label} [{d_name}]")
             item.setData(Qt.UserRole, tr.id)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
             self.traces_list.addItem(item)
             if target_id and tr.id == target_id:
                 select_row = idx
@@ -1056,6 +1060,19 @@ class ConfiguratorTab(QWidget):
         self.tr_xcol_combo.clear()
         self.tr_ycol_combo.clear()
         self._block_signals = False
+
+    def _on_traces_reordered(self, parent, start, end, destination, row):
+        ax_cfg = self.fig_config.get_axis(*self.current_coord)
+        trace_by_id = {t.id: t for t in ax_cfg.traces}
+        reordered = []
+        for i in range(self.traces_list.count()):
+            item = self.traces_list.item(i)
+            t_id = item.data(Qt.UserRole) if item else None
+            if t_id in trace_by_id:
+                reordered.append(trace_by_id[t_id])
+        if len(reordered) == len(ax_cfg.traces):
+            ax_cfg.traces = reordered
+            self.config_changed.emit()
 
     def _on_trace_selection_changed(self, row: int):
         if row < 0:
