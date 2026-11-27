@@ -234,20 +234,49 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
                 break
 
         if first_numeric_idx == 0:
-            # Row 0 itself is already numeric -> check if the line immediately before it (in comments) was a header!
+            # Row 0 itself is already numeric -> check if commented lines before it contain a header (and optional units/comments)
             tokens_row0 = tokenize(candidate_lines[0], best_delim)
+            num_data_cols = len(tokens_row0)
             if first_candidate_idx > 0 and detected_comment:
-                prev_line = sample_lines[first_candidate_idx - 1].strip()
-                if prev_line.startswith(detected_comment):
-                    stripped_prev = prev_line.lstrip(detected_comment).strip()
+                def strip_comment_prefix(raw_line: str) -> str:
+                    s = raw_line.rstrip("\r\n").lstrip()
+                    if s.startswith(detected_comment):
+                        s = s[len(detected_comment):]
+                    return s.strip() if best_delim == r"\s+" else s.lstrip(" ")
+
+                # Search backwards from the row immediately before numeric data:
+                # 1. If the row immediately before data matches num_data_cols, it may be a 1-row header
+                #    or the Units row of a 2-row (Name + Units) Origin header.
+                # 2. Otherwise (e.g. a comment row like '# Delta mode...'), look up to 3 lines back
+                #    for the Name (+ Units) header block.
+                matching_indices = []
+                for idx in range(first_candidate_idx - 1, max(-1, first_candidate_idx - 4), -1):
+                    prev_line = sample_lines[idx].strip()
+                    if not prev_line.startswith(detected_comment):
+                        break
+                    stripped_prev = strip_comment_prefix(sample_lines[idx])
                     prev_tokens = tokenize(stripped_prev, best_delim)
                     prev_num_c = sum(is_numeric_token(t, detected_decimal) for t in prev_tokens)
-                    if len(prev_tokens) == len(tokens_row0) and (prev_num_c / max(1, len(prev_tokens)) < 0.5):
-                        has_header = True
-                        header_row = first_candidate_idx - 1
-                        skiprows = first_candidate_idx - 1
-                        # Do not treat '#' as comment character in pandas so pandas can read the header row!
-                        detected_comment = None
+                    non_empty_c = sum(1 for t in prev_tokens if t.strip() != "")
+                    if len(prev_tokens) == num_data_cols and non_empty_c > 0 and (prev_num_c / max(1, non_empty_c) < 0.5):
+                        matching_indices.append(idx)
+                    elif matching_indices:
+                        # Stop once we've passed the contiguous header/units block
+                        break
+
+                if matching_indices:
+                    hdr_idx = matching_indices[-1]
+                    has_header = True
+                    header_row = hdr_idx
+                    skiprows = hdr_idx
+                    skip_after_header = max(0, first_candidate_idx - hdr_idx - 1)
+                    if skip_after_header >= 1 and (hdr_idx + 1) in matching_indices:
+                        unit_stripped = strip_comment_prefix(sample_lines[hdr_idx + 1])
+                        unit_tokens = tokenize(unit_stripped, best_delim)
+                        if len(unit_tokens) == num_data_cols and any(u.strip() for u in unit_tokens):
+                            combine_units_row = True
+                    # Do not treat '#' as comment character in pandas so pandas can read the header row!
+                    detected_comment = None
             if not has_header:
                 has_header = False
                 header_row = None
@@ -617,6 +646,12 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
                             uf.readline()
                         unit_line = uf.readline().rstrip("\r\n")
                     if unit_line:
+                        stripped_u = unit_line.lstrip()
+                        for p in COMMENT_PREFIXES:
+                            if stripped_u.startswith(p):
+                                unit_line = stripped_u[len(p):]
+                                unit_line = unit_line.strip() if sep == r"\s+" else unit_line.lstrip(" ")
+                                break
                         unit_tokens = (
                             re.split(r"\s+", unit_line.strip())
                             if sep == r"\s+"
