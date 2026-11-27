@@ -206,6 +206,7 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
     # Step 5: Detect Skiprows, Header, and Origin-style metadata rows after header
     skiprows = 0
     skip_after_header = 0
+    combine_units_row = False
     has_header = False
     header_row = None
 
@@ -274,6 +275,10 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
                 skiprows = header_row
                 data_start_line = data_line_indices[first_numeric_idx] if data_line_indices else first_numeric_idx
                 skip_after_header = max(0, data_start_line - header_row - 1)
+                if skip_after_header >= 1 and header_row + 1 < len(sample_lines):
+                    unit_tokens = tokenize(sample_lines[header_row + 1].rstrip("\r\n"), best_delim)
+                    if len(unit_tokens) == num_data_cols and any(u.strip() for u in unit_tokens):
+                        combine_units_row = True
             else:
                 has_header = False
                 skiprows = data_line_indices[first_numeric_idx] if data_line_indices else first_numeric_idx
@@ -303,6 +308,7 @@ def sniff_file_parameters(filepath: str) -> Dict[str, Any]:
         "delimiter": best_delim,
         "skiprows": skiprows,
         "skip_after_header": skip_after_header,
+        "combine_units_row": combine_units_row,
         "has_header": has_header,
         "header_row": header_row,
         "comment": detected_comment,
@@ -603,6 +609,29 @@ def parse_file(filepath: str, params: Dict[str, Any], max_rows: Optional[int] = 
                     if cleaned_cols[0].startswith(p):
                         cleaned_cols[0] = cleaned_cols[0][len(p):].strip()
             df.columns = cleaned_cols
+
+            if skip_after_header >= 1 and params.get("combine_units_row", False):
+                try:
+                    with open(filepath, "r", encoding=encoding, errors="replace") as uf:
+                        for _ in range(skiprows + 1):
+                            uf.readline()
+                        unit_line = uf.readline().rstrip("\r\n")
+                    if unit_line:
+                        unit_tokens = (
+                            re.split(r"\s+", unit_line.strip())
+                            if sep == r"\s+"
+                            else unit_line.split(sep)
+                        )
+                        new_cols = []
+                        for i, col_name in enumerate(df.columns):
+                            unit = unit_tokens[i].strip() if i < len(unit_tokens) else ""
+                            if unit:
+                                new_cols.append(f"{col_name} ({unit})")
+                            else:
+                                new_cols.append(col_name)
+                        df.columns = new_cols
+                except Exception:
+                    pass
 
         # Convert numeric columns where possible
         for col in df.columns:

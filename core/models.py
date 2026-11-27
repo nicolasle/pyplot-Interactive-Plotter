@@ -135,7 +135,7 @@ class AxisConfig:
     sec_yaxis_preset: str = "Custom Formula"
 
     # Panel Label (Publication Tag, e.g. a, b, c...)
-    show_panel_label: bool = True
+    show_panel_label: bool = False
     panel_label: str = ""
     panel_label_loc: str = "top-left"   # 'top-left', 'top-right', 'bottom-left', 'bottom-right'
     panel_label_square: bool = True     # True: black square with white letter; False: plain black font

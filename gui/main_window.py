@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLabel, QSizePolicy, QApplication, QLineEdit, QAbstractSpinBox
 )
 from PySide6.QtCore import Qt, QLocale, QObject, QEvent, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QKeyEvent
+from PySide6.QtGui import QAction, QKeySequence, QKeyEvent, QIcon
 
 from core.models import FigureConfig, Dataset
 from core.project_manager import (
@@ -68,6 +68,9 @@ class MainWindow(QMainWindow):
             app_inst._decimal_filter_installed = True
 
         self.setWindowTitle("Pyplot Interactive Plotter - Scientific Publication Suite")
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
         self.resize(1380, 840)
 
         # Apply modern dark styling

@@ -4,9 +4,10 @@ Desktop Application Entrypoint
 Run with: python app.py
 """
 
+import os
 import sys
 from PySide6.QtWidgets import QApplication, QSplashScreen
-from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QLinearGradient
+from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QLinearGradient, QIcon
 from PySide6.QtCore import Qt, QLocale
 
 
@@ -70,6 +71,12 @@ def _create_splash_pixmap() -> QPixmap:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawRoundedRect(32, 102, 50, 3, 1.5, 1.5)
 
+    # Logo on the right side of splash
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        logo_pm = QPixmap(logo_path).scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        painter.drawPixmap(width - 124, 48, logo_pm)
+
     painter.end()
     return pixmap
 
@@ -82,6 +89,10 @@ def main():
     app.setStyle("Fusion")
     app.setApplicationName("Pyplot Interactive Plotter")
     app.setOrganizationName("Scientific Tools")
+
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        app.setWindowIcon(QIcon(logo_path))
 
     # Show splash screen immediately for instant visual feedback on startup
     pixmap = _create_splash_pixmap()

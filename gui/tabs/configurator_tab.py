@@ -569,7 +569,7 @@ class ConfiguratorTab(QWidget):
         panel_layout.setSpacing(8)
 
         self.ax_show_panel_label_cb = QCheckBox("Show Panel Label")
-        self.ax_show_panel_label_cb.setChecked(True)
+        self.ax_show_panel_label_cb.setChecked(False)
         self.ax_show_panel_label_cb.stateChanged.connect(self._on_axes_prop_changed)
         panel_layout.addWidget(self.ax_show_panel_label_cb, 0, 0)
 

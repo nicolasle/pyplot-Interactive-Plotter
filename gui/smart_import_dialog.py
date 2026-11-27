@@ -135,9 +135,18 @@ class SmartImportDialog(QDialog):
         self.skip_after_header_spin.setToolTip(
             "Number of metadata rows (e.g. Origin units & comments) between the header row and numeric data"
         )
-        self.skip_after_header_spin.valueChanged.connect(self._on_params_changed)
+        self.skip_after_header_spin.valueChanged.connect(self._on_skip_after_header_changed)
         after_hdr_layout.addWidget(self.skip_after_header_spin)
         ctrl_layout.addLayout(after_hdr_layout)
+
+        self.combine_units_cb = QCheckBox("Append units from row after header: quantity (unit)")
+        self.combine_units_cb.setToolTip(
+            "For Origin-style files: combines row 1 (quantity) and row 2 (unit) into 'quantity (unit)'"
+        )
+        self.combine_units_cb.setStyleSheet("margin-left: 20px; color: #94a3b8;")
+        self.combine_units_cb.setEnabled(False)
+        self.combine_units_cb.stateChanged.connect(self._on_params_changed)
+        ctrl_layout.addWidget(self.combine_units_cb)
 
         # Comment Prefix
         c_layout = QHBoxLayout()
@@ -381,6 +390,10 @@ class SmartImportDialog(QDialog):
         self.skip_after_header_spin.setValue(skip_after)
         self.skip_after_header_spin.setEnabled(has_hdr)
 
+        # Combine units row
+        self.combine_units_cb.setChecked(p.get("combine_units_row", False))
+        self.combine_units_cb.setEnabled(has_hdr and skip_after >= 1)
+
         # Comment
         comment = p.get("comment", None)
         if comment:
@@ -464,6 +477,7 @@ class SmartImportDialog(QDialog):
             "delimiter": delimiter,
             "skiprows": self.skiprows_spin.value(),
             "skip_after_header": self.skip_after_header_spin.value() if self.header_cb.isChecked() else 0,
+            "combine_units_row": self.combine_units_cb.isChecked() if (self.header_cb.isChecked() and self.skip_after_header_spin.value() >= 1) else False,
             "has_header": self.header_cb.isChecked(),
             "comment": comment,
             "decimal": self.decimal_combo.currentData(),
@@ -479,7 +493,13 @@ class SmartImportDialog(QDialog):
         }
 
     def _on_header_toggled(self, state):
-        self.skip_after_header_spin.setEnabled(self.header_cb.isChecked())
+        has_hdr = self.header_cb.isChecked()
+        self.skip_after_header_spin.setEnabled(has_hdr)
+        self.combine_units_cb.setEnabled(has_hdr and self.skip_after_header_spin.value() >= 1)
+        self._on_params_changed()
+
+    def _on_skip_after_header_changed(self, value: int):
+        self.combine_units_cb.setEnabled(self.header_cb.isChecked() and value >= 1)
         self._on_params_changed()
 
     def _on_transpose_toggled(self, state):
